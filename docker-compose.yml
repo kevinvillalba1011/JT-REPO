@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14-alpine
+    container_name: jt-db
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_NAME:-jt_documents}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - jt-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: jt-redis
+    ports:
+      - '6379:6379'
+    networks:
+      - jt-network
+
+  ftp-server:
+    image: delfer/alpine-ftp-server
+    container_name: jt-ftp
+    ports:
+      - '2121:21'
+      - '21000-21010:21000-21010'
+    environment:
+      - USERS=testuser|testpass
+    volumes:
+      - ./ftp:/ftp/testuser
+    networks:
+      - jt-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jt-app
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-jt_documents}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # System Internal Paths
+      - IN_PATH=/app/local/in
+      - OCR_PATH=/app/local/ocr
+      - DONE_PATH=/app/local/done
+      # GCP & Gemini
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCP_LOCATION=${GCP_LOCATION}
+      - DOCUMENT_AI_PROCESSOR_ID=${DOCUMENT_AI_PROCESSOR_ID}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/key.json
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./local/in:/app/local/in
+      - ./local/ocr:/app/local/ocr
+      - ./local/done:/app/local/done
+      - ./local/reports:/app/local/reports
+      - ./local/ftp:/app/local/ftp
+      - ./local/data:/app/local/data
+      - ./secrets:/app/secrets
+    networks:
+      - jt-network
+
+volumes:
+  pgdata:
+
+networks:
+  jt-network:
+    driver: bridge

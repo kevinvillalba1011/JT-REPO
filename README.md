@@ -1,70 +1,43 @@
-# API Test – Document AI + Gemini 2.5 Flash Lite
+# Sistema de Procesamiento de Documentos Asíncrono
 
-Proyecto NestJS con **3 rutas de prueba**:
+Este proyecto implementa un pipeline de procesamiento de documentos utilizando NestJS, BullMQ (Redis) y TypeORM (en el prompt de implementación).
 
-1. **OCR** – Sube un archivo → **Google Document AI** devuelve el texto extraído.
-2. **Clasificación** – Envías texto → **Gemini 2.5 Flash Lite** indica si es cliente (dato para saber si es cliente).
-3. **Extracción** – Envías texto → **Gemini 2.5 Flash Lite** extrae datos estructurados (JSON).
+## Estructura de Carpetas (`local/`)
 
-## Requisitos
+El sistema utiliza el directorio `./local` para toda la persistencia de archivos de ejecución. Se divide en dos categorías:
 
-Para correr el proyecto necesitas tener instalado:
+### 1. Rutas Internas del Sistema (Siempre usadas)
 
-| Requisito   | Versión recomendada | Notas |
-|------------|----------------------|--------|
-| **Node.js** | 18.x o 20.x (LTS) | [Descargar](https://nodejs.org/) |
-| **pnpm**   | 8.x o superior      | Gestor de paquetes. Instalar: `npm install -g pnpm` |
-| **Nest CLI** | (opcional)       | Se instala como dependencia de desarrollo con `pnpm install`; los scripts `nest build` y `nest start` usan el del proyecto. |
+Son fundamentales para el pipeline de BullMQ:
 
-Comprobar instalación:
+- `local/in`: Entrada de documentos para OCR.
+- `local/ocr`: Documentos con texto extraído, en espera de procesamiento por IA.
+- `local/done`: Documentos finalizados con éxito.
 
-```bash
-node -v    # v18.x o v20.x
-pnpm -v    # 8.x o superior
-```
+### 2. Rutas de Modo Local (Configurables)
 
-Si prefieres **npm** en lugar de pnpm, puedes usar `npm install` y `npm run start:dev` (el proyecto no define `package-lock.json`, pero npm funciona igual).
+Se activan principalmente cuando `GLOBAL_MODE=LOCAL`:
 
-## Instalación
+- `local/ftp`: Directorio fuente para simular o realizar extracción local.
+- `local/data`: Contiene el archivo `clients.csv` para validación de clientes.
+- `local/reports`: Carpeta de salida para los reportes generados.
 
-```bash
-pnpm install
-```
+---
 
-## Variables de entorno
+## 🚀 Guía de Inicio Rápido
 
-Copia `.env.example` a `.env` y configura:
+1.  **Configuración**: Copia `.env.example` a `.env` y ajusta `GLOBAL_MODE`.
+2.  **Infraestructura**: `docker-compose up -d`.
+3.  **Inicio**: Al arrancar, el `FolderInitializerService` validará y creará toda la estructura de `/local`.
 
-- **Document AI (OCR):** `GCP_PROJECT_ID`, `GCP_LOCATION`, `DOCUMENT_AI_PROCESSOR_ID`, y `GOOGLE_APPLICATION_CREDENTIALS` (ruta al JSON de la cuenta de servicio de GCP).
-- **Gemini:** `GEMINI_API_KEY` (API key de Google AI Studio).
+---
 
-## Ejecutar
+## Funcionamiento del Pipeline
 
-```bash
-pnpm run start:dev
-```
+El sistema se rige por la variable `GLOBAL_MODE` (LOCAL, FTP, GMAIL):
 
-App: `http://localhost:3000`  
-Swagger: `http://localhost:3000/api`
-
-## Endpoints
-
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | `/test/ocr` | **Probar OCR.** Body: `multipart/form-data` con campo `file`. Respuesta: `{ success, text }` (texto de Document AI). |
-| POST | `/test/clasificacion` | **Probar clasificación.** Body: `{ "text": "..." }`. Respuesta: `{ success, esCliente, razon }` (Gemini 2.5 Flash Lite). |
-| POST | `/test/extraccion` | **Probar extracción.** Body: `{ "text": "..." }`. Respuesta: `{ success, data }` (JSON extraído por Gemini 2.5 Flash Lite). |
-
-## Estructura
-
-```
-src/
-├── main.ts
-├── app.module.ts
-├── test/
-│   └── test.controller.ts    # 3 rutas: ocr, clasificacion, extraccion
-├── document-ai/
-│   └── document-ai.service.ts # OCR con Google Document AI
-└── gemini/
-    └── gemini.service.ts      # Clasificación y extracción con Gemini 2.5 Flash Lite
-```
+1.  **Extracción**: Mueve archivos a `local/in`.
+2.  **OCR**: Extrae texto y mueve el archivo a `local/ocr`.
+3.  **IA (Gemini)**: Analiza el texto, valida contra clientes y mueve el archivo final a `local/done`.
+4.  **Validación de Clientes**: Si el demandado NO es un cliente registrado en el CSV de `local/data`, el JSON se recorta.
+5.  **Reporte**: Genera CSV en `local/reports` (o lo sube a FTP/Email según el modo).

@@ -39,3 +39,11 @@ nul
 # Environment
 .env
 .env.local
+
+.antigravityrules
+MEMORY.md
+secrets/*
+tmp/*
+data/*
+migrations/*
+ftp/*

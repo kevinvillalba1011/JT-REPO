@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DocumentState {
+  EN_COLA_OCR
+  PROCESANDO_OCR
+  OCR_UNREADABLE
+  EN_COLA_MODELO
+  MODEL_ERROR
+  IA_OK
+}
+
+model Document {
+  id              String        @id @default(uuid())
+  nombre_archivo  String
+  hash_md5        String        @unique
+  estado          DocumentState
+  texto_ocr       String?       @db.Text
+  json_modelo     Json?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
