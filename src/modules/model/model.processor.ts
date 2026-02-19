@@ -81,7 +81,7 @@ DOCUMENTO PARA PROCESAR:
 
       // Call Gemini
       this.logger.log('Calling Gemini API...');
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       
       try {
         const result = await model.generateContent(prompt);
