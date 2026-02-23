@@ -34,7 +34,19 @@ docker compose up -d db redis ftp-server
 docker compose ps
 ```
 
-### 4. Iniciar la app
+### 4. Crear tablas con Prisma
+
+```bash
+npx prisma migrate dev --name init
+```
+
+Genera el cliente de TypeScript:
+
+```bash
+npx prisma generate
+```
+
+### 5. Iniciar la app
 
 ```bash
 pnpm install       # solo la primera vez
