@@ -10,7 +10,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ClientService } from '../client/client.service';
 
 @Injectable()
-@Processor('cola_modelo')
+@Processor('cola_modelo', { concurrency: 5 })
 export class ModelProcessor extends WorkerHost {
   private readonly logger = new Logger(ModelProcessor.name);
   private readonly donePath: string;
@@ -35,6 +35,12 @@ export class ModelProcessor extends WorkerHost {
     const { documentId, filePath, text } = job.data;
     this.logger.log(
       `Processing Model Job ${job.id} for Document ${documentId}`,
+    );
+
+    // Update State: PROCESANDO_MODELO
+    await this.documentRepository.updateState(
+      documentId,
+      DocumentState.PROCESANDO_MODELO,
     );
 
     // Check if key is valid (simple check)
@@ -216,18 +222,22 @@ export class ModelProcessor extends WorkerHost {
     } catch (error) {
       this.logger.error(
         `Model Processing Failed for Document ${documentId}: ${error.message}`,
+        error.stack,
       );
-      // According to requirements: "Si ambos fallan, actualiza la BD a MODEL_ERROR."
-      // Since we don't have a secondary model implemented yet (maybe in future), we transition to error state on failure.
 
-      // But maybe we want to retry first? BullMQ handles retries.
-      // If we catch here, BullMQ considers it success (unless we rethrow).
-      // We should rethrow to allow retries, ONLY catch finally if retries exhausted.
-      // But WorkerHost doesn't expose attempt count easily in process().
-      // For now, I will let it throw to retry. To strict requirements, we'd need attempt logic.
-      // Assuming retry logic handles temporary glitches. If persistent, it fails.
-      // We can use @OnWorkerEvent('failed') to update DB state when all retries fail?
-      // For now, let's keep it simple: throw error.
+      // Update state to MODEL_ERROR before re-throwing for BullMQ retries
+      await this.documentRepository.updateState(
+        documentId,
+        DocumentState.MODEL_ERROR,
+        {
+          json_modelo: {
+            error: error.message,
+            timestamp: new Date().toISOString(),
+          },
+        },
+      );
+
+      // Re-throw to allow BullMQ to handle retries
       throw error;
     }
   }
@@ -239,11 +249,30 @@ export class ModelProcessor extends WorkerHost {
 
   @OnWorkerEvent('failed')
   async onFailed(job: Job, err: any) {
-    this.logger.error(`Job ${job.id} has failed with ${err.message}`);
-    // Ideally update DB state to MODEL_ERROR here if retries exhausted
+    const { documentId } = job.data;
+    this.logger.error(
+      `Job ${job.id} (Document ${documentId}) has failed permanently with ${err.message}`,
+    );
+
+    // Update document state to MODEL_ERROR when all retries are exhausted
     try {
-      // Need to check if retries exhausted but job object in event might not show that clearly or we want to wait final fail.
-      // But logging is good enough for now. The requirement was on logic flow.
-    } catch (e) {}
+      await this.documentRepository.updateState(
+        documentId,
+        DocumentState.MODEL_ERROR,
+        {
+          json_modelo: {
+            error: err.message,
+            errorType: 'permanent_failure',
+            timestamp: new Date().toISOString(),
+            attempts: job.attemptsMade,
+          },
+        },
+      );
+      this.logger.log(
+        `Document ${documentId} marked as MODEL_ERROR in database`,
+      );
+    } catch (dbError) {
+      this.logger.error(`Failed to update document state: ${dbError.message}`);
+    }
   }
 }

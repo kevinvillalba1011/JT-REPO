@@ -10,7 +10,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
 
-@Processor('cola_ocr', { concurrency: 1 })
+@Processor('cola_ocr', { concurrency: 5 })
 export class OcrProcessor extends WorkerHost {
   private readonly logger = new Logger(OcrProcessor.name);
   private readonly ocrPath: string;
@@ -23,7 +23,7 @@ export class OcrProcessor extends WorkerHost {
   ) {
     super();
     this.ocrPath = this.configService.get<string>('OCR_PATH', './local/ocr');
-    
+
     // Credentials are loaded from GOOGLE_APPLICATION_CREDENTIALS env var automatically by the library
     this.docAiClient = new DocumentProcessorServiceClient();
   }
@@ -33,7 +33,10 @@ export class OcrProcessor extends WorkerHost {
     this.logger.log(`Processing Job ${job.id} for Document ${documentId}`);
 
     // Update State: PROCESANDO_OCR
-    await this.documentRepository.updateState(documentId, DocumentState.PROCESANDO_OCR);
+    await this.documentRepository.updateState(
+      documentId,
+      DocumentState.PROCESANDO_OCR,
+    );
 
     try {
       // 1. Read file
@@ -43,7 +46,9 @@ export class OcrProcessor extends WorkerHost {
       // 2. Prepare Request
       const projectId = this.configService.get<string>('GCP_PROJECT_ID');
       const location = this.configService.get<string>('GCP_LOCATION', 'us');
-      const processorId = this.configService.get<string>('DOCUMENT_AI_PROCESSOR_ID');
+      const processorId = this.configService.get<string>(
+        'DOCUMENT_AI_PROCESSOR_ID',
+      );
 
       if (!projectId || !processorId) {
         throw new Error('GCP Configuration missing for Document AI');
@@ -53,7 +58,8 @@ export class OcrProcessor extends WorkerHost {
       const baseName = path.basename(filePath);
       const fileNameLower = baseName.toLowerCase();
       let mimeType = 'application/pdf';
-      if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) mimeType = 'image/jpeg';
+      if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg'))
+        mimeType = 'image/jpeg';
       else if (fileNameLower.endsWith('.png')) mimeType = 'image/png';
       else if (fileNameLower.endsWith('.tiff')) mimeType = 'image/tiff';
 
@@ -67,22 +73,25 @@ export class OcrProcessor extends WorkerHost {
 
       this.logger.log(`Calling Document AI: ${resourceName}`);
       const [result] = await this.docAiClient.processDocument(request);
-      
+
       const { document } = result;
       const extractedText = document?.text || '';
 
       if (!extractedText.trim()) {
         this.logger.warn('Document is unreadable by OCR (Empty text)');
-        await this.documentRepository.updateState(documentId, DocumentState.OCR_UNREADABLE);
-        return; 
+        await this.documentRepository.updateState(
+          documentId,
+          DocumentState.OCR_UNREADABLE,
+        );
+        return;
       }
 
       // Success
       this.logger.log(`OCR Extracted ${extractedText.length} characters.`);
-      
+
       // Move file to TMP_OCR_PATH
       const newFilePath = path.join(this.ocrPath, baseName);
-      
+
       try {
         fs.renameSync(filePath, newFilePath);
       } catch (err) {
@@ -94,21 +103,35 @@ export class OcrProcessor extends WorkerHost {
       // Note: Repository updateState expects Prisma.DocumentUpdateInput compatible payload
       // Assuming 'texto_ocr' exists in your Prisma schema. If not, this logical payload will fail at runtime or type check.
       // Based on previous steps, we assume it exists.
-      await this.documentRepository.updateState(documentId, DocumentState.EN_COLA_MODELO, {
-        texto_ocr: extractedText,
-      } as any);
+      await this.documentRepository.updateState(
+        documentId,
+        DocumentState.EN_COLA_MODELO,
+        {
+          texto_ocr: extractedText,
+        } as any,
+      );
 
       // Enqueue to cola_modelo
       this.logger.log(`OCR Success. Moving to cola_modelo.`);
       await this.modelQueue.add('process-model', {
         documentId,
         filePath: newFilePath,
-        text: extractedText
+        text: extractedText,
       });
-
     } catch (error) {
-      this.logger.error(`OCR Error: ${error.message}`, error.stack);
-      // If credentials fail or API fails, we throw so BullMQ retries
+      this.logger.error(
+        `OCR Error for Document ${documentId}: ${error.message}`,
+        error.stack,
+      );
+      // Update document state to ERROR_OCR before throwing (for visibility)
+      await this.documentRepository.updateState(
+        documentId,
+        DocumentState.ERROR_OCR,
+        {
+          texto_ocr: `Error: ${error.message}`,
+        } as any,
+      );
+      // Re-throw so BullMQ can handle retries
       throw error;
     }
   }
@@ -119,7 +142,24 @@ export class OcrProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job, err: any) {
-    this.logger.error(`Job ${job.id} has failed with ${err.message}`);
+  async onFailed(job: Job, err: any) {
+    const { documentId } = job.data;
+    this.logger.error(
+      `Job ${job.id} (Document ${documentId}) has failed permanently with ${err.message}`,
+    );
+
+    // Update document state to ERROR_OCR when all retries are exhausted
+    try {
+      await this.documentRepository.updateState(
+        documentId,
+        DocumentState.ERROR_OCR,
+        {
+          texto_ocr: `Error definitivo: ${err.message}`,
+        } as any,
+      );
+      this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);
+    } catch (dbError) {
+      this.logger.error(`Failed to update document state: ${dbError.message}`);
+    }
   }
 }
