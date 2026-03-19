@@ -8,24 +8,26 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
+import { TextExtractorStrategy } from './strategies/text-extractor.strategy';
+import { DocumentAiStrategy } from './strategies/document-ai.strategy';
+import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
 
 @Processor('cola_ocr', { concurrency: 5 })
 export class OcrProcessor extends WorkerHost {
   private readonly logger = new Logger(OcrProcessor.name);
   private readonly ocrPath: string;
-  private readonly docAiClient: DocumentProcessorServiceClient;
+  private readonly strategies: TextExtractorStrategy[];
 
   constructor(
     private readonly documentRepository: DocumentRepository,
     private readonly configService: ConfigService,
     @InjectQueue('cola_modelo') private readonly modelQueue: Queue,
+    private readonly docAiStrategy: DocumentAiStrategy,
+    private readonly excelStrategy: ExcelExtractorStrategy,
   ) {
     super();
     this.ocrPath = this.configService.get<string>('OCR_PATH', './local/ocr');
-
-    // Credentials are loaded from GOOGLE_APPLICATION_CREDENTIALS env var automatically by the library
-    this.docAiClient = new DocumentProcessorServiceClient();
+    this.strategies = [this.docAiStrategy, this.excelStrategy];
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
@@ -39,43 +41,14 @@ export class OcrProcessor extends WorkerHost {
     );
 
     try {
-      // 1. Read file
-      const fileBuffer = fs.readFileSync(filePath);
-      const encodedImage = fileBuffer.toString('base64');
+      const ext = path.extname(filePath).toLowerCase();
+      const strategy = this.strategies.find((s) => s.canHandle(ext));
 
-      // 2. Prepare Request
-      const projectId = this.configService.get<string>('GCP_PROJECT_ID');
-      const location = this.configService.get<string>('GCP_LOCATION', 'us');
-      const processorId = this.configService.get<string>(
-        'DOCUMENT_AI_PROCESSOR_ID',
-      );
-
-      if (!projectId || !processorId) {
-        throw new Error('GCP Configuration missing for Document AI');
+      if (!strategy) {
+        throw new Error(`Unsupported file extension: ${ext}`);
       }
 
-      const resourceName = `projects/${projectId}/locations/${location}/processors/${processorId}`;
-      const baseName = path.basename(filePath);
-      const fileNameLower = baseName.toLowerCase();
-      let mimeType = 'application/pdf';
-      if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg'))
-        mimeType = 'image/jpeg';
-      else if (fileNameLower.endsWith('.png')) mimeType = 'image/png';
-      else if (fileNameLower.endsWith('.tiff')) mimeType = 'image/tiff';
-
-      const request = {
-        name: resourceName,
-        rawDocument: {
-          content: encodedImage,
-          mimeType,
-        },
-      };
-
-      this.logger.log(`Calling Document AI: ${resourceName}`);
-      const [result] = await this.docAiClient.processDocument(request);
-
-      const { document } = result;
-      const extractedText = document?.text || '';
+      const extractedText = await strategy.extractText(filePath);
 
       if (!extractedText.trim()) {
         this.logger.warn('Document is unreadable by OCR (Empty text)');
@@ -90,6 +63,7 @@ export class OcrProcessor extends WorkerHost {
       this.logger.log(`OCR Extracted ${extractedText.length} characters.`);
 
       // Move file to TMP_OCR_PATH
+      const baseName = path.basename(filePath);
       const newFilePath = path.join(this.ocrPath, baseName);
 
       try {
@@ -107,17 +81,27 @@ export class OcrProcessor extends WorkerHost {
         documentId,
         DocumentState.EN_COLA_MODELO,
         {
-          texto_ocr: extractedText,
-        } as any,
+          ocrText: extractedText,
+        },
       );
 
-      // Enqueue to cola_modelo
+      // Enqueue to cola_modelo with exponential backoff for rate limits
       this.logger.log(`OCR Success. Moving to cola_modelo.`);
-      await this.modelQueue.add('process-model', {
-        documentId,
-        filePath: newFilePath,
-        text: extractedText,
-      });
+      await this.modelQueue.add(
+        'process-model',
+        {
+          documentId,
+          filePath: newFilePath,
+          text: extractedText,
+        },
+        {
+          attempts: 6,
+          backoff: {
+            type: 'exponential',
+            delay: 15000, // Waits 15s -> 30s -> 60s -> 120s if model rate limit hits
+          },
+        },
+      );
     } catch (error) {
       this.logger.error(
         `OCR Error for Document ${documentId}: ${error.message}`,
@@ -128,8 +112,8 @@ export class OcrProcessor extends WorkerHost {
         documentId,
         DocumentState.ERROR_OCR,
         {
-          texto_ocr: `Error: ${error.message}`,
-        } as any,
+          ocrText: `Error: ${error.message}`,
+        },
       );
       // Re-throw so BullMQ can handle retries
       throw error;
@@ -154,8 +138,8 @@ export class OcrProcessor extends WorkerHost {
         documentId,
         DocumentState.ERROR_OCR,
         {
-          texto_ocr: `Error definitivo: ${err.message}`,
-        } as any,
+          ocrText: `Error definitivo: ${err.message}`,
+        },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);
     } catch (dbError) {

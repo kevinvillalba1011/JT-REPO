@@ -10,27 +10,45 @@ export class DocumentRepository {
 
   async create(data: Prisma.DocumentCreateInput): Promise<Document> {
     try {
-      this.logger.log(`Creating document with hash: ${data.hash_md5}`);
-      return await this.prisma.document.create({ data });
+      this.logger.log(`Creating document with hash: ${data.md5Hash}`);
+      return await this.prisma.document.create({ 
+        data: {
+          ...data,
+          stateLogs: {
+            create: {
+              previousState: DocumentState.INGRESADO,
+              newState: data.state,
+            }
+          }
+        } 
+      });
     } catch (error) {
       this.logger.error(`Error creating document: ${error.message}`);
       throw error;
     }
   }
 
-  async findByHash(hash_md5: string): Promise<Document | null> {
+  async findByHash(md5Hash: string): Promise<Document | null> {
     return this.prisma.document.findUnique({
-      where: { hash_md5 },
+      where: { md5Hash },
     });
   }
 
   async updateState(id: string, state: DocumentState, extraData?: Prisma.DocumentUpdateInput): Promise<Document> {
     this.logger.log(`Updating document ${id} to state ${state}`);
+    const currentDoc = await this.findById(id);
+
     return this.prisma.document.update({
       where: { id },
       data: {
-        estado: state,
+        state: state,
         ...extraData,
+        stateLogs: {
+          create: {
+            previousState: currentDoc ? currentDoc.state : null,
+            newState: state,
+          }
+        }
       },
     });
   }
@@ -44,12 +62,46 @@ export class DocumentRepository {
   async findAll(): Promise<Document[]> {
     return this.prisma.document.findMany({
       orderBy: { createdAt: 'desc' },
+      include: { stateLogs: true }
     });
   }
 
   async findByState(state: DocumentState): Promise<Document[]> {
     return this.prisma.document.findMany({
-      where: { estado: state },
+      where: { state },
     });
+  }
+
+  async findWithFilters(filters: {
+    state?: DocumentState;
+    startDate?: string;
+    endDate?: string;
+    skip: number;
+    take: number;
+  }): Promise<{ data: Document[]; total: number }> {
+    const { state, startDate, endDate, skip, take } = filters;
+
+    const whereClause: Prisma.DocumentWhereInput = {};
+
+    if (state) whereClause.state = state;
+
+    if (startDate || endDate) {
+      whereClause.createdAt = {};
+      if (startDate) whereClause.createdAt.gte = new Date(startDate);
+      if (endDate) whereClause.createdAt.lte = new Date(endDate);
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: { stateLogs: true }
+      }),
+      this.prisma.document.count({ where: whereClause }),
+    ]);
+
+    return { data, total };
   }
 }

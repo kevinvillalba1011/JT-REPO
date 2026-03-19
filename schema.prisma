@@ -8,6 +8,7 @@ datasource db {
 }
 
 enum DocumentState {
+  INGRESADO
   EN_COLA_OCR
   PROCESANDO_OCR
   ERROR_OCR
@@ -19,13 +20,29 @@ enum DocumentState {
 }
 
 model Document {
-  id             String        @id @default(uuid())
-  nombre_archivo String
-  hash_md5       String        @unique
-  estado         DocumentState
-  texto_ocr      String?       @db.Text
-  json_modelo    Json?
+  id          String             @id @default(uuid())
+  fileName    String             @map("nombre_archivo")
+  md5Hash     String             @unique @map("hash_md5")
+  state       DocumentState      @map("estado")
+  ocrText     String?            @db.Text @map("texto_ocr")
+  jsonModel   Json?              @map("json_modelo")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  stateLogs   DocumentStateLog[]
+
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@map("documents")
+}
+
+model DocumentStateLog {
+  id             String         @id @default(uuid())
+  documentId     String         @map("document_id")
+  previousState  DocumentState? @map("estado_anterior")
+  newState       DocumentState  @map("nuevo_estado")
+  document       Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  @@map("document_state_logs")
 }

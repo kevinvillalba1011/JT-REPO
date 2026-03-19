@@ -40,31 +40,9 @@ export class FtpFileStrategy implements FileExtractorStrategy {
 
       // Cambiamos al directorio remoto primero para asegurar rutas correctas
       await client.cd(remotePath);
-      
-      const fileList = await client.list();
       const allowedExtensions = this.configService.get<string>('ALLOWED_EXTENSIONS', '').split(',').map(ext => ext.trim().toLowerCase());
       
-      for (const file of fileList) {
-        if (file.isDirectory) continue;
-        
-        const ext = path.extname(file.name).toLowerCase();
-        if (allowedExtensions.length > 0 && !allowedExtensions.includes(ext)) {
-          // this.logger.debug(`Skipping FTP file ${file.name}: Extension ${ext} not allowed.`);
-          continue;
-        }        
-        const localFilePath = path.join(destinationFolder, file.name);
-
-        this.logger.log(`Downloading ${file.name} to ${localFilePath}`);
-        
-        // Al haber hecho cd(), podemos usar solo file.name
-        await client.downloadTo(localFilePath, file.name);
-        
-        extractedFiles.push({
-          name: file.name,
-          originalPath: path.join(remotePath, file.name),
-          destinationPath: localFilePath,
-        });
-      }
+      await this.readFtpDirectoryRecursive(client, remotePath, destinationFolder, allowedExtensions, extractedFiles);
 
     } catch(err) {
       this.logger.error(`FTP Error: ${err.message}`);
@@ -73,5 +51,40 @@ export class FtpFileStrategy implements FileExtractorStrategy {
     }
 
     return extractedFiles;
+  }
+
+  private async readFtpDirectoryRecursive(client: Client, currentPath: string, destinationFolder: string, allowedExtensions: string[], extractedFiles: ExtractedFile[]) {
+    await client.cd(currentPath);
+    const fileList = await client.list();
+
+    for (const file of fileList) {
+      if (file.isDirectory) {
+        // recursively enter
+        const nextPath = path.posix.join(currentPath, file.name);
+        await this.readFtpDirectoryRecursive(client, nextPath, destinationFolder, allowedExtensions, extractedFiles);
+        // Ensure we are back in the correct directory after returning
+        await client.cd(currentPath);
+        continue;
+      }
+
+      const ext = path.extname(file.name).toLowerCase();
+      if (allowedExtensions.length > 0 && !allowedExtensions.includes(ext)) {
+        continue;
+      }
+
+      // Generate a collision-free destination name just in case
+      const uniqueName = Date.now().toString() + '_' + file.name;
+      const localFilePath = path.join(destinationFolder, uniqueName);
+
+      this.logger.log(`Downloading FTP file ${file.name} from ${currentPath} to ${localFilePath}`);
+
+      await client.downloadTo(localFilePath, file.name);
+
+      extractedFiles.push({
+        name: uniqueName,
+        originalPath: path.posix.join(currentPath, file.name),
+        destinationPath: localFilePath,
+      });
+    }
   }
 }

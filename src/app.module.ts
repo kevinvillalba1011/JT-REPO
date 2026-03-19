@@ -8,6 +8,7 @@ import { OcrModule } from './modules/ocr/ocr.module';
 import { ModelModule } from './modules/model/model.module';
 import { ReportModule } from './modules/report/report.module';
 import { ClientModule } from './modules/client/client.module';
+import { TenantModule } from './modules/tenant/tenant.module';
 import { FolderInitializerService } from './common/services/folder-initializer.service';
 
 @Module({
@@ -32,6 +33,7 @@ import { FolderInitializerService } from './common/services/folder-initializer.s
     ModelModule,
     ReportModule,
     ClientModule,
+    TenantModule,
   ],
   providers: [FolderInitializerService],
 })

@@ -17,8 +17,8 @@ export class FtpClientStrategy implements ClientSourceStrategy {
     const password = this.configService.get<string>('FTP_PASSWORD');
     const port = this.configService.get<number>('FTP_PORT', 21);
     
-    // Remote path structure suggested by user: FTP_REMOTE_PATH/CLIENTS_PATH/CLIENTS_FILE
-    const remotePath = this.configService.get<string>('FTP_REMOTE_PATH', '/');
+    // Use a dedicated FTP_CLIENTS_PATH, fallback to FTP_REMOTE_PATH if not provided
+    const remotePath = this.configService.get<string>('FTP_CLIENTS_PATH', this.configService.get<string>('FTP_REMOTE_PATH', '/'));
     const clientsFile = this.configService.get<string>('CSV_CLIENTS_FILE', 'clients.csv');
     
     const client = new Client();

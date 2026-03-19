@@ -3,6 +3,8 @@ import { OcrProcessor } from './ocr.processor';
 import { BullModule } from '@nestjs/bullmq';
 import { DocumentsModule } from '../documents/documents.module';
 import { ConfigModule } from '@nestjs/config';
+import { DocumentAiStrategy } from './strategies/document-ai.strategy';
+import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
 
 @Module({
   imports: [
@@ -24,6 +26,10 @@ import { ConfigModule } from '@nestjs/config';
        We don't strictly need registerQueue('cola_ocr') here.
     */
   ],
-  providers: [OcrProcessor],
+  providers: [
+    OcrProcessor,
+    DocumentAiStrategy,
+    ExcelExtractorStrategy
+  ],
 })
 export class OcrModule {}

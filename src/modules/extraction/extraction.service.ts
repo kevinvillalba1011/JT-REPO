@@ -6,6 +6,7 @@ import { Queue } from 'bullmq';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { Redis } from 'ioredis';
 import { LocalFileStrategy } from './strategies/local-file.strategy';
 import { GmailFileStrategy } from './strategies/gmail-file.strategy';
 import { DocumentRepository } from '../documents/repositories/document.repository';
@@ -17,7 +18,7 @@ export class ExtractionService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ExtractionService.name);
   private readonly inPath: string;
   private readonly ocrPath: string;
-  private readonly lockFile: string;
+  private readonly redisClient: Redis;
 
   constructor(
     private readonly configService: ConfigService,
@@ -31,7 +32,10 @@ export class ExtractionService implements OnApplicationBootstrap {
   ) {
     this.inPath = this.configService.get<string>('IN_PATH', './local/in');
     this.ocrPath = this.configService.get<string>('OCR_PATH', './local/ocr');
-    this.lockFile = path.join(this.inPath, '.lock'); 
+    this.redisClient = new Redis({
+      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      port: this.configService.get<number>('REDIS_PORT', 6379),
+    });
   }
 
   async onApplicationBootstrap() {
@@ -48,7 +52,7 @@ export class ExtractionService implements OnApplicationBootstrap {
         ...(await this.documentRepository.findByState(DocumentState.PROCESANDO_OCR)),
     ];
     for (const doc of pendingOcr) {
-        const filePath = path.join(this.inPath, doc.nombre_archivo);
+        const filePath = path.join(this.inPath, doc.fileName);
         if (fs.existsSync(filePath)) {
             this.logger.log(`Recovering Document ${doc.id} for OCR queue.`);
             await this.ocrQueue.add('process-ocr', {
@@ -63,13 +67,13 @@ export class ExtractionService implements OnApplicationBootstrap {
     // 2. Recover Model
     const pendingModel = await this.documentRepository.findByState(DocumentState.EN_COLA_MODELO);
     for (const doc of pendingModel) {
-        const filePath = path.join(this.ocrPath, doc.nombre_archivo);
+        const filePath = path.join(this.ocrPath, doc.fileName);
         if (fs.existsSync(filePath)) {
             this.logger.log(`Recovering Document ${doc.id} for Model queue.`);
             await this.modelQueue.add('process-model', {
                 documentId: doc.id,
                 filePath,
-                text: doc.texto_ocr,
+                text: doc.ocrText,
             });
         } else {
             this.logger.warn(`Cannot recover Document ${doc.id} (Model): File not found at ${filePath}`);
@@ -87,14 +91,16 @@ export class ExtractionService implements OnApplicationBootstrap {
   async handleCron() {
     this.logger.debug('Starting scheduled extraction task...');
 
-    if (fs.existsSync(this.lockFile)) {
-      this.logger.warn('Extraction task skipped: Lock file exists.');
+    const lockKey = 'extraction:lock';
+    // Adquirir lock distribuido con TTL de 120 segundos para evitar trabas permanentes
+    const lockAcquired = await this.redisClient.set(lockKey, 'locked', 'EX', 120, 'NX');
+
+    if (!lockAcquired) {
+      this.logger.warn('Extraction task skipped: Redis Lock exists (task already running).');
       return;
     }
 
     try {
-      // Create lock
-      fs.writeFileSync(this.lockFile, new Date().toISOString());
 
       // 1. Select Strategy
       const mode = this.configService.get<string>('GLOBAL_MODE', 'LOCAL');
@@ -130,10 +136,8 @@ export class ExtractionService implements OnApplicationBootstrap {
       this.logger.error(`Error in extraction task: ${error.message}`, error.stack);
     } finally {
       // Release lock
-      if (fs.existsSync(this.lockFile)) {
-        fs.unlinkSync(this.lockFile);
-      }
-      this.logger.debug('Extraction task finished. Lock released.');
+      await this.redisClient.del(lockKey);
+      this.logger.debug('Extraction task finished. Redis Lock released.');
     }
   }
 
@@ -156,9 +160,9 @@ export class ExtractionService implements OnApplicationBootstrap {
 
       // Insert new Document
       const newDoc = await this.documentRepository.create({
-        nombre_archivo: fileName,
-        hash_md5: hex,
-        estado: DocumentState.EN_COLA_OCR,
+        fileName: fileName,
+        md5Hash: hex,
+        state: DocumentState.EN_COLA_OCR,
       });
 
       this.logger.log(`Document created: ${newDoc.id}. Sending to queue cola_ocr.`);

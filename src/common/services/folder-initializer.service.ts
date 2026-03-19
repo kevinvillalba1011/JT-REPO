@@ -17,7 +17,7 @@ export class FolderInitializerService implements OnApplicationBootstrap {
       
       // Mode-specific Local Paths
       this.configService.get<string>('LOCAL_SOURCE_PATH', './local/ftp'),
-      this.configService.get<string>('LOCAL_DATA_PATH', './local/data'),
+      this.configService.get<string>('LOCAL_CLIENTS_PATH', './local/data'),
       this.configService.get<string>('LOCAL_REPORTS_PATH', './local/reports'),
 
       './ftp', // FTP root for Docker

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { DocumentRepository } from '../documents/repositories/document.repository';
@@ -7,6 +7,7 @@ import { LocalReportStrategy } from './strategies/local-report.strategy';
 import { FtpReportStrategy } from './strategies/ftp-report.strategy';
 import { GmailReportStrategy } from './strategies/gmail-report.strategy';
 import { ClientService } from '../client/client.service';
+import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
 import * as fs from 'fs';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class ReportService {
     private readonly ftpStrategy: FtpReportStrategy,
     private readonly gmailStrategy: GmailReportStrategy,
     private readonly clientService: ClientService,
+    @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {}
 
   @Cron(process.env.CRON_REPORT_SCHEDULE || '0 23 * * *')
@@ -36,15 +38,15 @@ export class ReportService {
     const reportLines: string[] = [];
     
     for (const doc of docs) {
-      const json = doc.json_modelo as any;
-      const demandadoId = json?.demandado?.identificacion || json?.identificacion_demandado;
+      const json = doc.jsonModel as any;
+      const demandadoId = json ? json[this.profile.identifierKey] : null;
       
       const isClient = demandadoId ? this.clientService.isClient(demandadoId) : false;
 
       if (isClient) {
-        reportLines.push(this.generate34Fields(doc));
+        reportLines.push(this.generateDynamicFields(doc, this.profile.clientFields));
       } else {
-        reportLines.push(this.generate7Fields(doc));
+        reportLines.push(this.generateDynamicFields(doc, this.profile.nonClientFields));
       }
     }
 
@@ -71,32 +73,33 @@ export class ReportService {
     this.logger.log(`Report generation completed using ${mode} mode.`);
   }
 
-  private generate7Fields(doc: Document): string {
-    return [
-      doc.id,
-      doc.nombre_archivo,
-      doc.estado,
-      doc.createdAt.toISOString(),
-      doc.updatedAt.toISOString(),
-      doc.hash_md5,
-      "NON_CLIENT"
-    ].join(',');
-  }
-
-  private generate34Fields(doc: Document): string {
-    const json = doc.json_modelo as any;
-    const base = [
-      doc.id,
-      doc.nombre_archivo,
-      doc.estado,
-      doc.createdAt.toISOString(),
-      doc.updatedAt.toISOString(),
-      doc.hash_md5,
-      json?.demandado?.identificacion || 'N/A',
-      json?.demandado?.nombre || 'N/A'
-    ];
+  private generateDynamicFields(doc: Document, fieldsArray: string[]): string {
+    const json = doc.jsonModel as any || {};
     
-    const fillers = new Array(26).fill('DATA');
-    return [...base, ...fillers].join(',');
+    // Default base columns for every exported document (system data)
+    const baseColumns = [
+      doc.id,
+      doc.fileName,
+      doc.state,
+      doc.createdAt.toISOString(),
+      doc.updatedAt.toISOString(),
+      doc.md5Hash
+    ];
+
+    // Dynamic columns from structured JSON model based on schema
+    const dynamicColumns = fieldsArray.map(field => {
+      const value = json[field];
+      if (value === undefined || value === null) return 'N/A';
+      
+      // If the field is an array (like multi-selection items), join them
+      if (Array.isArray(value)) return `"${value.join(' | ')}"`;
+      
+      // Wrap strings in quotes if they contain commas to avoid CSV breakage
+      if (typeof value === 'string' && value.includes(',')) return `"${value}"`;
+      
+      return value;
+    });
+
+    return [...baseColumns, ...dynamicColumns].join(',');
   }
 }

@@ -14,36 +14,52 @@ export class LocalFileStrategy implements FileExtractorStrategy {
   }
 
   async extractFiles(destinationFolder: string): Promise<ExtractedFile[]> {
-    this.logger.log(`Scanning local folder: ${this.sourcePath}`);
-    const files = fs.readdirSync(this.sourcePath);
+    this.logger.log(`Scanning local folder recursively: ${this.sourcePath}`);
     const extractedFiles: ExtractedFile[] = [];
-
     const allowedExtensions = this.configService.get<string>('ALLOWED_EXTENSIONS', '').split(',').map(ext => ext.trim().toLowerCase());
 
-    for (const file of files) {
-      if (file.startsWith('.')) continue; // skip hidden files
+    this.readDirectoryRecursive(this.sourcePath, allowedExtensions, extractedFiles, destinationFolder);
 
-      const ext = path.extname(file).toLowerCase();
-      if (allowedExtensions.length > 0 && !allowedExtensions.includes(ext)) {
-        this.logger.debug(`Skipping file ${file}: Extension ${ext} not allowed.`);
+    return extractedFiles;
+  }
+
+  private readDirectoryRecursive(currentDir: string, allowedExtensions: string[], extractedFiles: ExtractedFile[], destinationFolder: string) {
+    if (!fs.existsSync(currentDir)) return;
+
+    const files = fs.readdirSync(currentDir, { withFileTypes: true });
+
+    for (const file of files) {
+      if (file.name.startsWith('.')) continue; // skip hidden files
+
+      const fullPath = path.join(currentDir, file.name);
+
+      if (file.isDirectory()) {
+        this.readDirectoryRecursive(fullPath, allowedExtensions, extractedFiles, destinationFolder);
         continue;
       }
-      const originalPath = path.join(this.sourcePath, file);
-      const destinationPath = path.join(destinationFolder, file);
+
+      // It's a file
+      const ext = path.extname(file.name).toLowerCase();
+      if (allowedExtensions.length > 0 && !allowedExtensions.includes(ext)) {
+        this.logger.debug(`Skipping file ${file.name}: Extension ${ext} not allowed.`);
+        continue;
+      }
+
+      // Generate a collision-free destination name just in case two files in different folders share the same name
+      const uniqueName = Date.now().toString() + '_' + file.name;
+      const destinationPath = path.join(destinationFolder, uniqueName);
 
       try {
-        fs.renameSync(originalPath, destinationPath);
-        this.logger.log(`Moved file ${file} to ${destinationFolder}`);
+        fs.renameSync(fullPath, destinationPath);
+        this.logger.log(`Moved file ${fullPath} to ${destinationFolder} as ${uniqueName}`);
         extractedFiles.push({
-          name: file,
-          originalPath,
+          name: uniqueName,
+          originalPath: fullPath,
           destinationPath,
         });
       } catch (err) {
-        this.logger.error(`Failed to move file ${file}: ${err.message}`);
+        this.logger.error(`Failed to move file ${fullPath}: ${err.message}`);
       }
     }
-
-    return extractedFiles;
   }
 }

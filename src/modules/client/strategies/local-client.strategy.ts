@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClientSourceStrategy } from './client-source.strategy';
 import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class LocalClientStrategy implements ClientSourceStrategy {
@@ -10,7 +11,15 @@ export class LocalClientStrategy implements ClientSourceStrategy {
   constructor(private readonly configService: ConfigService) {}
 
   async fetchClients(): Promise<string[]> {
-    const clientsPath = this.configService.get<string>('LOCAL_DATA_PATH', './local/data/clients.csv');
+    let clientsPath = this.configService.get<string>('LOCAL_CLIENTS_PATH', './local/data');
+    const clientsFileName = this.configService.get<string>('CSV_CLIENTS_FILE', 'clients.csv');
+    
+    // In Docker, the volume mapped is a directory. If someone maps the directory,
+    // we append the dynamic CSV filename to avoid EISDIR read error.
+    if (!clientsPath.endsWith('.csv')) {
+      clientsPath = path.join(clientsPath, clientsFileName);
+    }
+
     if (!fs.existsSync(clientsPath)) {
       this.logger.warn(`Clients CSV file not found at ${clientsPath}`);
       return [];
