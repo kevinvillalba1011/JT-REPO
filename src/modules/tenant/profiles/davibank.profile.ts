@@ -41,7 +41,7 @@ export const DavibankProfile: TenantProfile = {
     'tipo_de_requerimiento',
     'tipo_de_requerimiento_inembargable',
     'observaciones',
-    'vinculo_cliente'
+    'vinculo_cliente',
   ],
   nonClientFields: [
     'no_id_demandado',
@@ -51,51 +51,159 @@ export const DavibankProfile: TenantProfile = {
     'tipo_oficio',
     'nombre_oficio_inicial',
     'nombre_oficio_final',
-    'observaciones'
+    'observaciones',
   ],
 
   responseSchema: {
     type: SchemaType.OBJECT,
     properties: {
-      no_id_demandado: { type: SchemaType.STRING, description: 'Numérico Maximo 12 Caracteres' },
-      fecha_y_hora_recepcion_correo: { type: SchemaType.STRING, description: 'Fecha yyyy-mm-dd hh:mm' },
-      fecha_y_hora_procesamiento_oficio: { type: SchemaType.STRING, description: 'Fecha yyyy-mm-dd hh:mm' },
-      tipo_de_proceso: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      tipo_oficio: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      nombre_oficio_inicial: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 40 Caracteres' },
-      nombre_oficio_final: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 40 Caracteres' },
-      valor_embargo: { type: SchemaType.STRING, description: 'Numérico Maximo 13 Caracteres' },
-      no_de_radicado: { type: SchemaType.STRING, description: 'Numérico Maximo 23 caracteres' },
-      cuenta_banco_agrario_deposito_judicial: { type: SchemaType.STRING, description: 'Numérico Maximo 12 caracteres' },
-      nombre_banco_deposito_judicial: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 40 Caracteres' },
-      nombre_del_secretario_o_funcionario_ente_embargante: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 25 Caracteres' },
-      codigo_de_alcance: { type: SchemaType.STRING, description: 'AlfaNumérico' },
-      codigo_de_aplicacion: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 2 caracteres' },
-      tipo_limite_de_inembargabilidad: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      tipo_de_aplicacion: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      tipo_respuesta: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      tipo_id_demandado: { type: SchemaType.STRING, description: 'Alfabético - Texto 1 Carácter (Ej: C, N, E)' },
-      nombre_demandado: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 25 Caracteres' },
-      tipo_id_demandante: { type: SchemaType.STRING, description: 'Alfabético - Texto 1 Carácter' },
-      no_id_demandante: { type: SchemaType.STRING, description: 'Numérico Maximo 12 Caracteres' },
-      nombre_demandante: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 25 Caracteres' },
-      nombre_del_ente_embargante: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 40 Caracteres' },
+      no_id_demandado: {
+        type: SchemaType.STRING,
+        description: 'Numérico Maximo 12 Caracteres',
+      },
+      fecha_y_hora_recepcion_correo: {
+        type: SchemaType.STRING,
+        description: 'Fecha yyyy-mm-dd hh:mm',
+      },
+      fecha_y_hora_procesamiento_oficio: {
+        type: SchemaType.STRING,
+        description: 'Fecha yyyy-mm-dd hh:mm',
+      },
+      tipo_de_proceso: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      tipo_oficio: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      nombre_oficio_inicial: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 40 Caracteres',
+      },
+      nombre_oficio_final: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 40 Caracteres',
+      },
+      valor_embargo: {
+        type: SchemaType.STRING,
+        description: 'Numérico Maximo 13 Caracteres',
+      },
+      no_de_radicado: {
+        type: SchemaType.STRING,
+        description: 'Numérico Maximo 23 caracteres',
+      },
+      cuenta_banco_agrario_deposito_judicial: {
+        type: SchemaType.STRING,
+        description: 'Numérico Maximo 12 caracteres',
+      },
+      nombre_banco_deposito_judicial: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 40 Caracteres',
+      },
+      nombre_del_secretario_o_funcionario_ente_embargante: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 25 Caracteres',
+      },
+      codigo_de_alcance: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico',
+      },
+      codigo_de_aplicacion: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 2 caracteres',
+      },
+      tipo_limite_de_inembargabilidad: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      tipo_de_aplicacion: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      tipo_respuesta: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      tipo_id_demandado: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto 1 Carácter (Ej: C, N, E)',
+      },
+      nombre_demandado: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 25 Caracteres',
+      },
+      tipo_id_demandante: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto 1 Carácter',
+      },
+      no_id_demandante: {
+        type: SchemaType.STRING,
+        description: 'Numérico Maximo 12 Caracteres',
+      },
+      nombre_demandante: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 25 Caracteres',
+      },
+      nombre_del_ente_embargante: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 40 Caracteres',
+      },
       ciudad: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      correos_electronicos: { type: SchemaType.STRING, description: 'AlfaNumérico. Debe contener @' },
-      link_de_colocacion_de_respuesta: { type: SchemaType.STRING, description: 'URL o Ruta Alfabética' },
-      productos_a_embargar: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      si_es_cta_especifica_no_de_cta: { type: SchemaType.STRING, description: 'Numérico Maximo 12 Caracteres' },
-      procentaje_a_embargar: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo %' },
-      productos_a_futuro: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      oficio_de_embargo_a_desembargar: { type: SchemaType.STRING, description: 'AlfaNumérico Maximo 40 Caracteres' },
-      radicado_oficio_de_embargo_a_desembargar: { type: SchemaType.STRING, description: 'Numérico Maximo 23 caracteres' },
-      tipo_documento_recibido_en_email: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      tipo_de_requerimiento: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      tipo_de_requerimiento_inembargable: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      observaciones: { type: SchemaType.STRING, description: 'Alfabético - Texto' },
-      vinculo_cliente: { type: SchemaType.STRING, description: 'Alfabético - Texto' }
+      correos_electronicos: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico. Debe contener @',
+      },
+      link_de_colocacion_de_respuesta: {
+        type: SchemaType.STRING,
+        description: 'URL o Ruta Alfabética',
+      },
+      productos_a_embargar: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      si_es_cta_especifica_no_de_cta: {
+        type: SchemaType.STRING,
+        description: 'Numérico Maximo 12 Caracteres',
+      },
+      procentaje_a_embargar: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo %',
+      },
+      productos_a_futuro: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      oficio_de_embargo_a_desembargar: {
+        type: SchemaType.STRING,
+        description: 'AlfaNumérico Maximo 40 Caracteres',
+      },
+      radicado_oficio_de_embargo_a_desembargar: {
+        type: SchemaType.STRING,
+        description: 'Numérico Maximo 23 caracteres',
+      },
+      tipo_documento_recibido_en_email: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      tipo_de_requerimiento: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      tipo_de_requerimiento_inembargable: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      observaciones: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
+      vinculo_cliente: {
+        type: SchemaType.STRING,
+        description: 'Alfabético - Texto',
+      },
     },
-    required: ["no_de_radicado", "tipo_oficio"]
+    required: ['no_de_radicado', 'tipo_oficio'],
   },
 
   promptTemplate: `
@@ -120,5 +228,5 @@ export const DavibankProfile: TenantProfile = {
 
     --- ESTRUCTURA DE TEXTO A PROCESAR (DESDE OCR) ---
     {{text}}
-  `
+  `,
 };

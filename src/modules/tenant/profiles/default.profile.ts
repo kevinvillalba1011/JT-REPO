@@ -40,7 +40,7 @@ export const DefaultProfile: TenantProfile = {
     'tipo_documento_recibido_en_email',
     'tipo_de_requerimiento',
     'tipo_de_requerimiento_inembargable',
-    'observaciones'
+    'observaciones',
   ],
   nonClientFields: [
     'no_id_demandado',
@@ -49,26 +49,41 @@ export const DefaultProfile: TenantProfile = {
     'tipo_de_proceso',
     'tipo_oficio',
     'nombre_oficio_inicial',
-    'nombre_oficio_final'
+    'nombre_oficio_final',
   ],
   responseSchema: {
     type: SchemaType.OBJECT,
     properties: {
       no_id_demandado: { type: SchemaType.STRING, nullable: true },
       fecha_hora_recepcion_correo: { type: SchemaType.STRING, nullable: true },
-      fecha_hora_procesamiento_oficio: { type: SchemaType.STRING, nullable: true },
+      fecha_hora_procesamiento_oficio: {
+        type: SchemaType.STRING,
+        nullable: true,
+      },
       tipo_de_proceso: { type: SchemaType.STRING, nullable: true },
       tipo_oficio: { type: SchemaType.STRING, nullable: true },
       nombre_oficio_inicial: { type: SchemaType.STRING, nullable: true },
       nombre_oficio_final: { type: SchemaType.STRING, nullable: true },
       valor_embargo: { type: SchemaType.STRING, nullable: true },
       no_de_radicado: { type: SchemaType.STRING, nullable: true },
-      cuenta_banco_agrario_deposito_judicial: { type: SchemaType.STRING, nullable: true },
-      nombre_banco_deposito_judicial: { type: SchemaType.STRING, nullable: true },
-      nombre_secretario_o_funcionario_ente_embargante: { type: SchemaType.STRING, nullable: true },
+      cuenta_banco_agrario_deposito_judicial: {
+        type: SchemaType.STRING,
+        nullable: true,
+      },
+      nombre_banco_deposito_judicial: {
+        type: SchemaType.STRING,
+        nullable: true,
+      },
+      nombre_secretario_o_funcionario_ente_embargante: {
+        type: SchemaType.STRING,
+        nullable: true,
+      },
       codigo_de_alcance: { type: SchemaType.STRING, nullable: true },
       codigo_de_aplicacion: { type: SchemaType.STRING, nullable: true },
-      tipo_limite_de_inembargabilidad: { type: SchemaType.STRING, nullable: true },
+      tipo_limite_de_inembargabilidad: {
+        type: SchemaType.STRING,
+        nullable: true,
+      },
       tipo_de_aplicacion: { type: SchemaType.STRING, nullable: true },
       tipo_respuesta: { type: SchemaType.STRING, nullable: true },
       tipo_id_demandado: { type: SchemaType.STRING, nullable: true },
@@ -85,17 +100,23 @@ export const DefaultProfile: TenantProfile = {
       porcentaje_a_embargar: { type: SchemaType.STRING, nullable: true },
       productos_a_futuro: { type: SchemaType.STRING, nullable: true },
       oficio_embargo_a_desembargar: { type: SchemaType.STRING, nullable: true },
-      radicado_oficio_embargo_a_desembargar: { type: SchemaType.STRING, nullable: true },
-      tipo_documento_recibido_en_email: { 
-        type: SchemaType.ARRAY, 
-        items: { type: SchemaType.STRING }
+      radicado_oficio_embargo_a_desembargar: {
+        type: SchemaType.STRING,
+        nullable: true,
       },
-      tipo_de_requerimiento: { 
-        type: SchemaType.ARRAY, 
-        items: { type: SchemaType.STRING }
+      tipo_documento_recibido_en_email: {
+        type: SchemaType.ARRAY,
+        items: { type: SchemaType.STRING },
       },
-      tipo_de_requerimiento_inembargable: { type: SchemaType.STRING, nullable: true },
-      observaciones: { type: SchemaType.STRING, nullable: true }
+      tipo_de_requerimiento: {
+        type: SchemaType.ARRAY,
+        items: { type: SchemaType.STRING },
+      },
+      tipo_de_requerimiento_inembargable: {
+        type: SchemaType.STRING,
+        nullable: true,
+      },
+      observaciones: { type: SchemaType.STRING, nullable: true },
     },
   },
   promptTemplate: `
@@ -122,5 +143,5 @@ export const DefaultProfile: TenantProfile = {
 
     Texto de entrada:
     {{text}}
-  `
+  `,
 };

@@ -12,7 +12,10 @@ import { TextExtractorStrategy } from './strategies/text-extractor.strategy';
 import { DocumentAiStrategy } from './strategies/document-ai.strategy';
 import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
 
-@Processor('cola_ocr', { concurrency: 5 })
+@Processor('cola_ocr', {
+  concurrency: 5,
+  lockDuration: 300000, // 5 minutes to bypass WSL/Docker clock drift
+})
 export class OcrProcessor extends WorkerHost {
   private readonly logger = new Logger(OcrProcessor.name);
   private readonly ocrPath: string;

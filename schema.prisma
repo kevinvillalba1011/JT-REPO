@@ -20,29 +20,29 @@ enum DocumentState {
 }
 
 model Document {
-  id          String             @id @default(uuid())
-  fileName    String             @map("nombre_archivo")
-  md5Hash     String             @unique @map("hash_md5")
-  state       DocumentState      @map("estado")
-  ocrText     String?            @db.Text @map("texto_ocr")
-  jsonModel   Json?              @map("json_modelo")
+  id        String        @id @default(uuid())
+  fileName  String        @map("nombre_archivo")
+  md5Hash   String        @unique @map("hash_md5")
+  state     DocumentState @map("estado")
+  ocrText   String?       @map("texto_ocr") @db.Text
+  jsonModel Json?         @map("json_modelo")
 
-  stateLogs   DocumentStateLog[]
+  stateLogs DocumentStateLog[]
 
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("documents")
 }
 
 model DocumentStateLog {
-  id             String         @id @default(uuid())
-  documentId     String         @map("document_id")
-  previousState  DocumentState? @map("estado_anterior")
-  newState       DocumentState  @map("nuevo_estado")
-  document       Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid())
+  documentId    String         @map("document_id")
+  previousState DocumentState? @map("estado_anterior")
+  newState      DocumentState  @map("nuevo_estado")
+  document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
-  createdAt      DateTime       @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("document_state_logs")
 }

@@ -16,7 +16,8 @@ import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interfac
   limiter: { 
     max: parseInt(process.env.MODEL_QUEUE_RPM_LIMIT || '15', 10), 
     duration: 60000 
-  } 
+  },
+  lockDuration: 300000 // 5 minutes to bypass WSL/Docker clock drift
 })
 export class ModelProcessor extends WorkerHost {
   private readonly logger = new Logger(ModelProcessor.name);
@@ -56,14 +57,14 @@ export class ModelProcessor extends WorkerHost {
       try {
         resultJson = await this.geminiService.extraerJudicial(text);
 
-        // New logic: Check if Demandado is Client using dynamic profile
+        // Lógica temporalmente deshabilitada por petición del usuario para guardar el JSON puro
+        /*
         const demandadoId = resultJson[this.profile.identifierKey];
-        
         if (demandadoId) {
           const isClient = this.clientService.isClient(demandadoId);
           if (!isClient) {
             this.logger.warn(
-              `Demandado ${demandadoId} is NOT a client. Trimming JSON to ${this.profile.nonClientFields.length} fields.`,
+              `Ninguno de los implicados (${JSON.stringify(demandadoId)}) es un cliente. Recortando JSON por seguridad (Trimming) a ${this.profile.nonClientFields.length} campos.`,
             );
             // Keep only non-client standard fields
             const trimmedJson = {};
@@ -73,6 +74,7 @@ export class ModelProcessor extends WorkerHost {
             resultJson = trimmedJson;
           }
         }
+        */
       } catch (err) {
         this.logger.error(`Gemini API Error: ${err.message}`);
         throw err;
