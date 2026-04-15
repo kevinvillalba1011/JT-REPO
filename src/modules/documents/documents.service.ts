@@ -7,8 +7,8 @@ export class DocumentService {
   constructor(private readonly repository: DocumentRepository) {}
 
   async findAll(dto: GetDocumentsDto) {
-    const page = dto.page || 1;
-    const limit = dto.limit || 10;
+    const page = Number(dto.page) || 1;
+    const limit = Number(dto.limit) || 10;
     const skip = (page - 1) * limit;
 
     const result = await this.repository.findWithFilters({
@@ -28,5 +28,9 @@ export class DocumentService {
         totalPages: Math.ceil(result.total / limit),
       },
     };
+  }
+
+  async getMetrics() {
+    return this.repository.getMetrics();
   }
 }

@@ -23,12 +23,18 @@ export class GetDocumentsDto {
   @IsEnum(DocumentState)
   state?: DocumentState;
 
-  @ApiPropertyOptional({ description: 'Start date (ISO format)', example: '2026-03-01T00:00:00.000Z' })
+  @ApiPropertyOptional({
+    description: 'Start date (ISO format)',
+    example: '2026-03-01T00:00:00.000Z',
+  })
   @IsOptional()
   @IsDateString()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'End date (ISO format)', example: '2026-03-31T23:59:59.999Z' })
+  @ApiPropertyOptional({
+    description: 'End date (ISO format)',
+    example: '2026-03-31T23:59:59.999Z',
+  })
   @IsOptional()
   @IsDateString()
   endDate?: string;

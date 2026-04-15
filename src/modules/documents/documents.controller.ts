@@ -14,4 +14,11 @@ export class DocumentsController {
   async findAll(@Query() query: GetDocumentsDto) {
     return this.documentsService.findAll(query);
   }
+
+  @Get('metrics')
+  @ApiOperation({ summary: 'Get document processing metrics' })
+  @ApiResponse({ status: 200, description: 'Return metrics.' })
+  async getMetrics() {
+    return this.documentsService.getMetrics();
+  }
 }

@@ -104,4 +104,23 @@ export class DocumentRepository {
 
     return { data, total };
   }
+
+  async getMetrics() {
+    const groups = await this.prisma.document.groupBy({
+      by: ['state'],
+      _count: true,
+    });
+
+    const total = await this.prisma.document.count();
+
+    const stats = groups.reduce((acc, curr) => {
+      acc[curr.state] = curr._count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      total,
+      stats,
+    };
+  }
 }
