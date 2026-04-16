@@ -63,7 +63,8 @@ export class GmailFileStrategy implements FileExtractorStrategy {
           
           // Note: Real implementation should parse mime to get original attachment extension
           // For this simulation, we use a name and check it against allowed
-          const filename = `email_${Date.now()}.pdf`; 
+          const safeName = `email_${Date.now()}.pdf`.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const filename = safeName; 
           const ext = path.extname(filename).toLowerCase();
 
           if (allowedExtensions.length > 0 && !allowedExtensions.includes(ext)) {

@@ -46,7 +46,8 @@ export class DocumentAiStrategy implements TextExtractorStrategy {
     };
 
     this.logger.log(`Calling Document AI: ${resourceName}`);
-    const [result] = await this.docAiClient.processDocument(request);
+    const timeoutMs = this.configService.get<number>('DOCAI_TIMEOUT_MS', 120000);
+    const [result] = await this.docAiClient.processDocument(request, { timeout: timeoutMs });
 
     const { document } = result;
     return document?.text || '';

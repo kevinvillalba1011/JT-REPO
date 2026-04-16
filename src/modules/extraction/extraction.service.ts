@@ -143,6 +143,14 @@ export class ExtractionService implements OnApplicationBootstrap {
 
   private async processFile(filePath: string, fileName: string) {
     try {
+      const stats = fs.statSync(filePath);
+      const maxSizeMB = this.configService.get<number>('FILE_MAX_SIZE_MB', 20);
+      if (stats.size > maxSizeMB * 1024 * 1024) {
+        this.logger.warn(`File ${fileName} exceeds max size of ${maxSizeMB}MB. Deleting.`);
+        fs.unlinkSync(filePath);
+        return;
+      }
+
       // Generate MD5
       const fileBuffer = fs.readFileSync(filePath);
       const hashSum = crypto.createHash('md5');
@@ -181,6 +189,35 @@ export class ExtractionService implements OnApplicationBootstrap {
 
     } catch (err) {
       this.logger.error(`Failed to process file ${fileName}: ${err.message}`);
+    }
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async cleanupOldFiles() {
+    this.logger.log('Starting daily cleanup of old files...');
+    const retentionDays = this.configService.get<number>('FILE_RETENTION_DAYS', 7);
+    const cleanAll = this.configService.get<string>('FILE_CLEANUP_ALL_FOLDERS', 'true') === 'true';
+    const now = Date.now();
+    const maxAgeMs = retentionDays * 24 * 60 * 60 * 1000;
+
+    const pathsToClean = cleanAll ? [this.inPath, this.ocrPath, this.configService.get<string>('DONE_PATH', './local/done')] : [this.configService.get<string>('DONE_PATH', './local/done')];
+
+    for (const folder of pathsToClean) {
+      if (!fs.existsSync(folder)) continue;
+      const files = fs.readdirSync(folder);
+      for (const file of files) {
+        if (file === '.lock' || file === '.gitkeep') continue;
+        const filePath = path.join(folder, file);
+        try {
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtimeMs > maxAgeMs) {
+            fs.unlinkSync(filePath);
+            this.logger.log(`Cleaned up old file: ${filePath}`);
+          }
+        } catch (err) {
+          this.logger.error(`Error cleaning up file ${filePath}: ${err.message}`);
+        }
+      }
     }
   }
 }

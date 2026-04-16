@@ -72,8 +72,15 @@ export class FtpFileStrategy implements FileExtractorStrategy {
         continue;
       }
 
-      // Generate a collision-free destination name just in case
-      const uniqueName = Date.now().toString() + '_' + file.name;
+      const maxSizeMB = this.configService.get<number>('FILE_MAX_SIZE_MB', 20);
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        this.logger.warn(`Skipping FTP file ${file.name}: Exceeds max size limit (${file.size} bytes).`);
+        continue;
+      }
+
+      // Generate a collision-free destination name just in case and sanitize it
+      const safeName = path.basename(file.name).replace(/[^a-zA-Z0-9.-]/g, '_');
+      const uniqueName = Date.now().toString() + '_' + safeName;
       const localFilePath = path.join(destinationFolder, uniqueName);
 
       this.logger.log(`Downloading FTP file ${file.name} from ${currentPath} to ${localFilePath}`);

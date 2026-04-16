@@ -11,9 +11,12 @@ import { ClientModule } from './modules/client/client.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { FolderInitializerService } from './common/services/folder-initializer.service';
 
+import { validate } from './common/config/env.validation';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
+      validate,
       isGlobal: true,
     }),
     ScheduleModule.forRoot(),

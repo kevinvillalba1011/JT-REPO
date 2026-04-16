@@ -38,13 +38,14 @@ export class GeminiService {
 
     for (const modelId of this.fallbackChain) {
       try {
+        const timeoutMs = this.configService.get<number>('GEMINI_TIMEOUT_MS', 60000);
         const model = this.genAI.getGenerativeModel({
           model: modelId,
           generationConfig: {
             responseMimeType: 'application/json',
             responseSchema: this.profile.responseSchema,
           },
-        });
+        }, { timeout: timeoutMs });
 
         this.logger.log(`Intentando extracción de JSON con el modelo: ${modelId}...`);
         const result = await model.generateContent(prompt);
