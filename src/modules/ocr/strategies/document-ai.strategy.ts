@@ -14,7 +14,9 @@ export class DocumentAiStrategy implements TextExtractorStrategy {
   }
 
   canHandle(fileExt: string): boolean {
-    return ['.pdf', '.jpg', '.jpeg', '.png', '.tiff'].includes(fileExt.toLowerCase());
+    return ['.pdf', '.jpg', '.jpeg', '.png', '.tiff'].includes(
+      fileExt.toLowerCase(),
+    );
   }
 
   async extractText(filePath: string): Promise<string> {
@@ -23,7 +25,9 @@ export class DocumentAiStrategy implements TextExtractorStrategy {
 
     const projectId = this.configService.get<string>('GCP_PROJECT_ID');
     const location = this.configService.get<string>('GCP_LOCATION', 'us');
-    const processorId = this.configService.get<string>('DOCUMENT_AI_PROCESSOR_ID');
+    const processorId = this.configService.get<string>(
+      'DOCUMENT_AI_PROCESSOR_ID',
+    );
 
     if (!projectId || !processorId) {
       throw new Error('GCP Configuration missing for Document AI');
@@ -32,8 +36,9 @@ export class DocumentAiStrategy implements TextExtractorStrategy {
     const resourceName = `projects/${projectId}/locations/${location}/processors/${processorId}`;
     let mimeType = 'application/pdf';
     const fileNameLower = filePath.toLowerCase();
-    
-    if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) mimeType = 'image/jpeg';
+
+    if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg'))
+      mimeType = 'image/jpeg';
     else if (fileNameLower.endsWith('.png')) mimeType = 'image/png';
     else if (fileNameLower.endsWith('.tiff')) mimeType = 'image/tiff';
 

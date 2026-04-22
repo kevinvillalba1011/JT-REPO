@@ -16,25 +16,31 @@ export class FtpClientStrategy implements ClientSourceStrategy {
     const user = this.configService.get<string>('FTP_USER');
     const password = this.configService.get<string>('FTP_PASSWORD');
     const port = this.configService.get<number>('FTP_PORT', 21);
-    
+
     // Use a dedicated FTP_CLIENTS_PATH, fallback to FTP_REMOTE_PATH if not provided
-    const remotePath = this.configService.get<string>('FTP_CLIENTS_PATH', this.configService.get<string>('FTP_REMOTE_PATH', '/'));
-    const clientsFile = this.configService.get<string>('CSV_CLIENTS_FILE', 'clients.csv');
-    
+    const remotePath = this.configService.get<string>(
+      'FTP_CLIENTS_PATH',
+      this.configService.get<string>('FTP_REMOTE_PATH', '/'),
+    );
+    const clientsFile = this.configService.get<string>(
+      'CSV_CLIENTS_FILE',
+      'clients.csv',
+    );
+
     const client = new Client();
     try {
       await client.access({ host, user, password, port, secure: false });
-      
+
       const tempPath = path.join(process.cwd(), 'tmp', 'clients_download.csv');
       await client.downloadTo(tempPath, path.join(remotePath, clientsFile));
-      
+
       const content = fs.readFileSync(tempPath, 'utf8');
       fs.unlinkSync(tempPath);
 
       return content
         .split(/\r?\n/)
-        .map(line => line.split(',')[0].trim())
-        .filter(id => id.length > 0);
+        .map((line) => line.split(',')[0].trim())
+        .filter((id) => id.length > 0);
     } catch (err) {
       this.logger.error(`Error fetching clients via FTP: ${err.message}`);
       return [];

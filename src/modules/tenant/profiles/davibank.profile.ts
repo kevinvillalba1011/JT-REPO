@@ -41,7 +41,6 @@ export const DavibankProfile: TenantProfile = {
     'tipo_de_requerimiento',
     'tipo_de_requerimiento_inembargable',
     'observaciones',
-    'vinculo_cliente',
   ],
   nonClientFields: [
     'no_id_demandado',
@@ -71,11 +70,12 @@ export const DavibankProfile: TenantProfile = {
       },
       tipo_de_proceso: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description: 'Alfabético - Texto (JUDICIAL / COACTIVO)',
       },
       tipo_oficio: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description:
+          'Alfabético - Texto (EMBARGO/DESEMBARGO/ALCANCE O REQUERIMIENTO)',
       },
       nombre_oficio_inicial: {
         type: SchemaType.STRING,
@@ -91,7 +91,7 @@ export const DavibankProfile: TenantProfile = {
       },
       no_de_radicado: {
         type: SchemaType.STRING,
-        description: 'Numérico Maximo 23 caracteres',
+        description: 'Numérico Maximo 23 caracteres (Resolución, Expediente)',
       },
       cuenta_banco_agrario_deposito_judicial: {
         type: SchemaType.STRING,
@@ -115,19 +115,20 @@ export const DavibankProfile: TenantProfile = {
       },
       tipo_limite_de_inembargabilidad: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description:
+          'Alfabético - Texto (25 SMLV - 510 UVT - Carta Circular de la Superfinanciera)',
       },
       tipo_de_aplicacion: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description: 'Alfabético - Texto (Congelar, Debitar)',
       },
       tipo_respuesta: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description: 'Alfabético - Texto (email, fisico, link)',
       },
       tipo_id_demandado: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto 1 Carácter (Ej: C, N, E)',
+        description: 'Alfabético - Texto 1 Carácter (C, N, E, T)',
       },
       nombre_demandado: {
         type: SchemaType.STRING,
@@ -135,7 +136,7 @@ export const DavibankProfile: TenantProfile = {
       },
       tipo_id_demandante: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto 1 Carácter',
+        description: 'Alfabético - Texto 1 Carácter (C, N, E, T)',
       },
       no_id_demandante: {
         type: SchemaType.STRING,
@@ -160,7 +161,8 @@ export const DavibankProfile: TenantProfile = {
       },
       productos_a_embargar: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description:
+          'Alfabético - Texto (Tipos de Cuentas, Números de Cuentas)',
       },
       si_es_cta_especifica_no_de_cta: {
         type: SchemaType.STRING,
@@ -172,7 +174,7 @@ export const DavibankProfile: TenantProfile = {
       },
       productos_a_futuro: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description: 'Alfabético - Texto (SI/NO)',
       },
       oficio_de_embargo_a_desembargar: {
         type: SchemaType.STRING,
@@ -184,23 +186,22 @@ export const DavibankProfile: TenantProfile = {
       },
       tipo_documento_recibido_en_email: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description:
+          'Alfabético - Texto (INDIVIDUAL, LISTADO, MASIVO, DUPLICADO, etc.)',
       },
       tipo_de_requerimiento: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description:
+          'Alfabético - Texto (ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, etc.)',
       },
       tipo_de_requerimiento_inembargable: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description: 'Alfabético - Texto (Qué se requiere)',
       },
       observaciones: {
         type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
-      },
-      vinculo_cliente: {
-        type: SchemaType.STRING,
-        description: 'Alfabético - Texto',
+        description:
+          'Alfabético - Texto (ALERTAS: REITERACIÓN, SEGUNDO ALCANCE, etc.)',
       },
     },
     required: ['no_de_radicado', 'tipo_oficio'],
@@ -211,6 +212,7 @@ export const DavibankProfile: TenantProfile = {
     Extraerás información de documentos jurídicos colombianos (ej. oficios, embargos).
     Debes emitir estricta y únicamente un objeto JSON con las reglas establecidas a continuación.
     Tu prioridad es aplicar formateos, trucamientos y validaciones de extensión antes de devolver cada campo.
+    IMPORTANTE: El objeto JSON resultante DEBE tener sus claves en el mismo orden que se definen en el esquema.
 
     --- REGLAS ESTRICTAS DE EXTRACCIÓN Y LIMPIEZA ---
     - NO ID DEMANDADO / DEMANDANTE: Remover formato. Extraer exclusivamente números. Truncar si supera 12 caracteres.
@@ -222,7 +224,6 @@ export const DavibankProfile: TenantProfile = {
     - CORREOS ELECTRÓNICOS: Buscar y extraer válidamente cadenas que contentan @.
     - NOMBRES Y ALFANUMÉRICOS: Nombres de personas o secretarios tienen un límite artificial dictado de 25 caracteres. Oficios y Juzgados (Ente embargante) máximo 40 caracteres. Aplica truncamiento inteligente si exceden.
     - PORCENTAJE: Asegurar la presencia del símbolo de '%'.
-    - VINCULO CLIENTE: Nuevo tipo de campo de análisis textual o nominal respecto a la entidad.
 
     Dejar el campo en blanco ("") en caso de no poder encontrar ni inferir la información en el documento. Nunca inventes o alucines datos. Aplica las truncaciones de tamaño impuestas en tus descripciones al pie de la letra.
 

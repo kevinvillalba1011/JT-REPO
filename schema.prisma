@@ -17,12 +17,16 @@ enum DocumentState {
   PROCESANDO_MODELO
   MODEL_ERROR
   IA_OK
+  FORMATO_NO_SOPORTADO
+  DUPLICADO
 }
+
+
 
 model Document {
   id        String        @id @default(uuid())
   fileName  String        @map("nombre_archivo")
-  md5Hash   String        @unique @map("hash_md5")
+  md5Hash   String        @map("hash_md5")
   state     DocumentState @map("estado")
   ocrText   String?       @map("texto_ocr") @db.Text
   jsonModel Json?         @map("json_modelo")

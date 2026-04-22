@@ -100,6 +100,8 @@ Borra manualmente todos los PDFs y CSVs residuales dentro de:
 *   `./local/ocr/`
 *   `./local/done/`
 *   `./local/reports/`
+*   `./local/unsupported/`
+*   `./local/duplicates/`
 *   *(⚠️ **NO borres** tu listado maestro en `./local/data/clientes.csv`)*.
 
 **2. Aniquila el Historial de la Base de Datos (PostgreSQL):**
@@ -158,6 +160,7 @@ Estrategia ideal para pruebas y servidores locales. Todo sucede dentro de la car
 - **Base de Clientes:** Si subes clientes nuevos, debes actualizar y reemplazar el archivo local en `./local/data/clients.csv`. *(El sistema lo relee y refresca en caliente automáticamente cada 1 hora)*.
 - **Ingesta de Oficios:** Los archivos crudos a analizar (PDF, JPG, XLS, CSV) deben colocarse en `./local/ftp/` (Simulando un host físico de entrada). La recolección es **recursiva**, el bot penetrará todas las sub-carpetas infinitamente buscando archivos válidos.
 - **Reportes Finales:** Finalizada la IA, tu CSV limpio segmentado por campos se guardará con la fecha de hoy dentro de `./local/reports/`.
+- **Archivos Especiales:** Los archivos duplicados (MD5 existente) se mueven a `./local/duplicates` con un timestamp. Los archivos con formato no soportado (ej. `.docx`, `.zip`) se mueven a `./local/unsupported`.
 - *(Rutas de Transición)*: `local/in/`, `local/ocr/`, `local/done/` son internas del pipeline del sistema (Movit). No colocar ni tocar archivos allí para evitar disrumpir transacciones.
 
 ### 2. Modo FTP (`GLOBAL_MODE=FTP`)
@@ -188,6 +191,8 @@ Gestión remota conectada a flujos judiciales vivos. Requiere `GMAIL_USER` y `GM
 | `IN_PATH`                  | Carpeta de entrada (`./local/in`)                |
 | `OCR_PATH`                 | Carpeta intermedia OCR (`./local/ocr`)           |
 | `DONE_PATH`                | Carpeta de procesados (`./local/done`)           |
+| `UNSUPPORTED_PATH`         | Carpeta de no admitidos (`./local/unsupported`)  |
+| `DUPLICATES_PATH`          | Carpeta de duplicados (`./local/duplicates`)     |
 | `GEMINI_API_KEY`           | API Key provista por Google AI Studio            |
 | `DOCUMENT_AI_PROCESSOR_ID` | ID extraído de Google Document AI                |
 
@@ -215,6 +220,7 @@ Gestión remota conectada a flujos judiciales vivos. Requiere `GMAIL_USER` y `GM
           ├─► ERRORES POSIBLES:
           │      • OCR_UNREADABLE (Imagen borrosa, escaneo en blanco)
           │      • ERROR_OCR (Excel corrupto con contraseña, falla de Red GCP)
+          │      • FORMATO_NO_SOPORTADO (El archivo se mueve a local/unsupported)
           │
           ▼
    EN_COLA_MODELO (Se inyecta el Texto puro a Gemini)

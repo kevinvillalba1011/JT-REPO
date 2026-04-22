@@ -11,7 +11,7 @@ import { DavibankProfile } from './profiles/davibank.profile';
       provide: 'TENANT_PROFILE',
       useFactory: (configService: ConfigService) => {
         const tenant = configService.get<string>('TENANT_PROFILE', 'default');
-        
+
         switch (tenant) {
           case 'davibank':
             return DavibankProfile;

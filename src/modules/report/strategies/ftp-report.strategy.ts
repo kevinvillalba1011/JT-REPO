@@ -22,16 +22,18 @@ export class FtpReportStrategy implements ReportStrategy {
     const client = new Client();
     try {
       await client.access({ host, user, password, port, secure: false });
-      
-      const remoteFilePath = path.join(remotePath, 'reports', fileName).replace(/\\/g, '/');
-      
+
+      const remoteFilePath = path
+        .join(remotePath, 'reports', fileName)
+        .replace(/\\/g, '/');
+
       // Ensure directory exists
       const remoteDir = path.dirname(remoteFilePath);
       await client.ensureDir(remoteDir);
 
       const stream = Readable.from([content]);
       await client.uploadFrom(stream, path.basename(remoteFilePath));
-      
+
       this.logger.log(`Report uploaded to FTP at ${remoteFilePath}`);
     } catch (err) {
       this.logger.error(`Error uploading report to FTP: ${err.message}`);

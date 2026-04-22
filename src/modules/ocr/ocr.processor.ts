@@ -48,7 +48,33 @@ export class OcrProcessor extends WorkerHost {
       const strategy = this.strategies.find((s) => s.canHandle(ext));
 
       if (!strategy) {
-        throw new Error(`Unsupported file extension: ${ext}`);
+        this.logger.warn(
+          `Unsupported file extension: ${ext}. Moving to unsupported folder.`,
+        );
+
+        const unsupportedPath = this.configService.get<string>(
+          'UNSUPPORTED_PATH',
+          './local/unsupported',
+        );
+        if (!fs.existsSync(unsupportedPath))
+          fs.mkdirSync(unsupportedPath, { recursive: true });
+
+        const baseName = path.basename(filePath);
+        const destination = path.join(unsupportedPath, baseName);
+
+        try {
+          fs.renameSync(filePath, destination);
+        } catch (err) {
+          fs.copyFileSync(filePath, destination);
+          fs.unlinkSync(filePath);
+        }
+
+        await this.documentRepository.updateState(
+          documentId,
+          DocumentState.FORMATO_NO_SOPORTADO, // Make sure this exists in Prisma or use a generic state
+          { ocrText: `Formato no soportado: ${ext}` },
+        );
+        return;
       }
 
       const extractedText = await strategy.extractText(filePath);
@@ -105,17 +131,21 @@ export class OcrProcessor extends WorkerHost {
           },
         },
       );
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : '';
+
       this.logger.error(
-        `OCR Error for Document ${documentId}: ${error.message}`,
-        error.stack,
+        `OCR Error for Document ${documentId}: ${errorMessage}`,
+        errorStack,
       );
       // Update document state to ERROR_OCR before throwing (for visibility)
       await this.documentRepository.updateState(
         documentId,
         DocumentState.ERROR_OCR,
         {
-          ocrText: `Error: ${error.message}`,
+          ocrText: `Error: ${errorMessage}`,
         },
       );
       // Re-throw so BullMQ can handle retries
@@ -145,8 +175,10 @@ export class OcrProcessor extends WorkerHost {
         },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);
-    } catch (dbError) {
-      this.logger.error(`Failed to update document state: ${dbError.message}`);
+    } catch (dbError: any) {
+      const dbErrorMessage =
+        dbError instanceof Error ? dbError.message : String(dbError);
+      this.logger.error(`Failed to update document state: ${dbErrorMessage}`);
     }
   }
 }

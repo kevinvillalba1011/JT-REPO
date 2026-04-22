@@ -37,7 +37,7 @@ export class ClientService implements OnModuleInit {
     }
 
     const ids = await strategy.fetchClients();
-    
+
     if (ids.includes('GMAIL_MODE_ALWAYS_TRUE')) {
       this.isGmailMode = true;
       this.clientIds = new Set();
@@ -45,14 +45,14 @@ export class ClientService implements OnModuleInit {
       this.isGmailMode = false;
       this.clientIds = new Set(ids);
     }
-    
+
     this.logger.log(`Loaded ${this.clientIds.size} client IDs.`);
   }
 
   isClient(identification: any): boolean {
     if (this.isGmailMode) return true;
     if (!identification) return false;
-    
+
     // Normalize identification (remove dots,- etc) handling raw numbers and nested objects
     let idString = '';
     if (typeof identification === 'string') {
@@ -61,12 +61,18 @@ export class ClientService implements OnModuleInit {
       idString = identification.toString();
     } else if (Array.isArray(identification) && identification.length > 0) {
       // Si el profile arroja un Array (ej. BBVA demandados), intentamos cazar dinámicamente un ID adentro
-      idString = String(identification[0].identificacion || identification[0].no_id_demandado || '');
+      idString = String(
+        identification[0].identificacion ||
+          identification[0].no_id_demandado ||
+          '',
+      );
     } else {
       idString = String(identification);
     }
 
     const normalized = idString.replace(/\D/g, '');
-    return this.clientIds.has(normalized) || this.clientIds.has(idString.trim());
+    return (
+      this.clientIds.has(normalized) || this.clientIds.has(idString.trim())
+    );
   }
 }

@@ -1,4 +1,7 @@
-import { FileExtractorStrategy, ExtractedFile } from './file-extractor.strategy';
+import {
+  FileExtractorStrategy,
+  ExtractedFile,
+} from './file-extractor.strategy';
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,20 +13,36 @@ export class LocalFileStrategy implements FileExtractorStrategy {
   private readonly sourcePath: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.sourcePath = this.configService.get<string>('LOCAL_SOURCE_PATH', './local/ftp');
+    this.sourcePath = this.configService.get<string>(
+      'LOCAL_SOURCE_PATH',
+      './local/ftp',
+    );
   }
 
   async extractFiles(destinationFolder: string): Promise<ExtractedFile[]> {
     this.logger.log(`Scanning local folder recursively: ${this.sourcePath}`);
     const extractedFiles: ExtractedFile[] = [];
-    const allowedExtensions = this.configService.get<string>('ALLOWED_EXTENSIONS', '').split(',').map(ext => ext.trim().toLowerCase());
+    const allowedExtensions = this.configService
+      .get<string>('ALLOWED_EXTENSIONS', '')
+      .split(',')
+      .map((ext) => ext.trim().toLowerCase());
 
-    this.readDirectoryRecursive(this.sourcePath, allowedExtensions, extractedFiles, destinationFolder);
+    this.readDirectoryRecursive(
+      this.sourcePath,
+      allowedExtensions,
+      extractedFiles,
+      destinationFolder,
+    );
 
     return extractedFiles;
   }
 
-  private readDirectoryRecursive(currentDir: string, allowedExtensions: string[], extractedFiles: ExtractedFile[], destinationFolder: string) {
+  private readDirectoryRecursive(
+    currentDir: string,
+    allowedExtensions: string[],
+    extractedFiles: ExtractedFile[],
+    destinationFolder: string,
+  ) {
     if (!fs.existsSync(currentDir)) return;
 
     const files = fs.readdirSync(currentDir, { withFileTypes: true });
@@ -34,14 +53,21 @@ export class LocalFileStrategy implements FileExtractorStrategy {
       const fullPath = path.join(currentDir, file.name);
 
       if (file.isDirectory()) {
-        this.readDirectoryRecursive(fullPath, allowedExtensions, extractedFiles, destinationFolder);
+        this.readDirectoryRecursive(
+          fullPath,
+          allowedExtensions,
+          extractedFiles,
+          destinationFolder,
+        );
         continue;
       }
 
       // It's a file
       const ext = path.extname(file.name).toLowerCase();
       if (allowedExtensions.length > 0 && !allowedExtensions.includes(ext)) {
-        this.logger.debug(`Skipping file ${file.name}: Extension ${ext} not allowed.`);
+        this.logger.debug(
+          `Skipping file ${file.name}: Extension ${ext} not allowed.`,
+        );
         continue;
       }
 
@@ -51,7 +77,9 @@ export class LocalFileStrategy implements FileExtractorStrategy {
 
       try {
         fs.renameSync(fullPath, destinationPath);
-        this.logger.log(`Moved file ${fullPath} to ${destinationFolder} as ${uniqueName}`);
+        this.logger.log(
+          `Moved file ${fullPath} to ${destinationFolder} as ${uniqueName}`,
+        );
         extractedFiles.push({
           name: uniqueName,
           originalPath: fullPath,

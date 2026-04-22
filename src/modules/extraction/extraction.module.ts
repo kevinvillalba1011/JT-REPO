@@ -9,12 +9,14 @@ import { BullModule } from '@nestjs/bullmq';
 @Module({
   imports: [
     DocumentsModule,
-    BullModule.registerQueue(
-      { name: 'cola_ocr' },
-      { name: 'cola_modelo' }
-    ),
+    BullModule.registerQueue({ name: 'cola_ocr' }, { name: 'cola_modelo' }),
   ],
-  providers: [ExtractionService, LocalFileStrategy, GmailFileStrategy, FtpFileStrategy],
+  providers: [
+    ExtractionService,
+    LocalFileStrategy,
+    GmailFileStrategy,
+    FtpFileStrategy,
+  ],
   exports: [ExtractionService],
 })
 export class ExtractionModule {}

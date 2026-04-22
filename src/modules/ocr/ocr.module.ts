@@ -26,10 +26,6 @@ import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
        We don't strictly need registerQueue('cola_ocr') here.
     */
   ],
-  providers: [
-    OcrProcessor,
-    DocumentAiStrategy,
-    ExcelExtractorStrategy
-  ],
+  providers: [OcrProcessor, DocumentAiStrategy, ExcelExtractorStrategy],
 })
 export class OcrModule {}

@@ -39,45 +39,55 @@ export class ExtractionService implements OnApplicationBootstrap {
   }
 
   async onApplicationBootstrap() {
-    this.logger.log(`Extraction Service initialized. Monitoring ${this.inPath}`);
+    this.logger.log(
+      `Extraction Service initialized. Monitoring ${this.inPath}`,
+    );
     await this.recoverPendingDocuments();
   }
 
   private async recoverPendingDocuments() {
     this.logger.log('Checking for pending documents to recover...');
-    
+
     // 1. Recover OCR (both EN_COLA and PROCESANDO)
     const pendingOcr = [
-        ...(await this.documentRepository.findByState(DocumentState.EN_COLA_OCR)),
-        ...(await this.documentRepository.findByState(DocumentState.PROCESANDO_OCR)),
+      ...(await this.documentRepository.findByState(DocumentState.EN_COLA_OCR)),
+      ...(await this.documentRepository.findByState(
+        DocumentState.PROCESANDO_OCR,
+      )),
     ];
     for (const doc of pendingOcr) {
-        const filePath = path.join(this.inPath, doc.fileName);
-        if (fs.existsSync(filePath)) {
-            this.logger.log(`Recovering Document ${doc.id} for OCR queue.`);
-            await this.ocrQueue.add('process-ocr', {
-                documentId: doc.id,
-                filePath,
-            });
-        } else {
-            this.logger.warn(`Cannot recover Document ${doc.id} (OCR): File not found at ${filePath}`);
-        }
+      const filePath = path.join(this.inPath, doc.fileName);
+      if (fs.existsSync(filePath)) {
+        this.logger.log(`Recovering Document ${doc.id} for OCR queue.`);
+        await this.ocrQueue.add('process-ocr', {
+          documentId: doc.id,
+          filePath,
+        });
+      } else {
+        this.logger.warn(
+          `Cannot recover Document ${doc.id} (OCR): File not found at ${filePath}`,
+        );
+      }
     }
 
     // 2. Recover Model
-    const pendingModel = await this.documentRepository.findByState(DocumentState.EN_COLA_MODELO);
+    const pendingModel = await this.documentRepository.findByState(
+      DocumentState.EN_COLA_MODELO,
+    );
     for (const doc of pendingModel) {
-        const filePath = path.join(this.ocrPath, doc.fileName);
-        if (fs.existsSync(filePath)) {
-            this.logger.log(`Recovering Document ${doc.id} for Model queue.`);
-            await this.modelQueue.add('process-model', {
-                documentId: doc.id,
-                filePath,
-                text: doc.ocrText,
-            });
-        } else {
-            this.logger.warn(`Cannot recover Document ${doc.id} (Model): File not found at ${filePath}`);
-        }
+      const filePath = path.join(this.ocrPath, doc.fileName);
+      if (fs.existsSync(filePath)) {
+        this.logger.log(`Recovering Document ${doc.id} for Model queue.`);
+        await this.modelQueue.add('process-model', {
+          documentId: doc.id,
+          filePath,
+          text: doc.ocrText,
+        });
+      } else {
+        this.logger.warn(
+          `Cannot recover Document ${doc.id} (Model): File not found at ${filePath}`,
+        );
+      }
     }
   }
 
@@ -93,19 +103,26 @@ export class ExtractionService implements OnApplicationBootstrap {
 
     const lockKey = 'extraction:lock';
     // Adquirir lock distribuido con TTL de 120 segundos para evitar trabas permanentes
-    const lockAcquired = await this.redisClient.set(lockKey, 'locked', 'EX', 120, 'NX');
+    const lockAcquired = await this.redisClient.set(
+      lockKey,
+      'locked',
+      'EX',
+      120,
+      'NX',
+    );
 
     if (!lockAcquired) {
-      this.logger.warn('Extraction task skipped: Redis Lock exists (task already running).');
+      this.logger.warn(
+        'Extraction task skipped: Redis Lock exists (task already running).',
+      );
       return;
     }
 
     try {
-
       // 1. Select Strategy
       const mode = this.configService.get<string>('GLOBAL_MODE', 'LOCAL');
       let strategy;
-      
+
       if (mode === 'GMAIL') {
         strategy = this.gmailStrategy;
       } else if (mode === 'FTP') {
@@ -124,16 +141,17 @@ export class ExtractionService implements OnApplicationBootstrap {
 
       // 3. Process Files in IN_PATH
       const files = fs.readdirSync(this.inPath);
-      
+
       for (const file of files) {
         if (file === '.lock' || file.startsWith('.')) continue;
 
         const filePath = path.join(this.inPath, file);
         await this.processFile(filePath, file);
       }
-
-    } catch (error) {
-      this.logger.error(`Error in extraction task: ${error.message}`, error.stack);
+    } catch (error: any) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const errStack = error instanceof Error ? error.stack : '';
+      this.logger.error(`Error in extraction task: ${errMsg}`, errStack);
     } finally {
       // Release lock
       await this.redisClient.del(lockKey);
@@ -153,8 +171,34 @@ export class ExtractionService implements OnApplicationBootstrap {
       const existingDoc = await this.documentRepository.findByHash(hex);
 
       if (existingDoc) {
-        this.logger.warn(`Duplicate file found (Hash: ${hex}). Deleting file: ${fileName}`);
-        fs.unlinkSync(filePath);
+        const duplicatesPath = this.configService.get<string>(
+          'DUPLICATES_PATH',
+          './local/duplicates',
+        );
+        if (!fs.existsSync(duplicatesPath))
+          fs.mkdirSync(duplicatesPath, { recursive: true });
+
+        const baseName = path.basename(filePath);
+        const newFileName = `${Date.now()}_${baseName}`;
+        const destination = path.join(duplicatesPath, newFileName);
+
+        this.logger.warn(
+          `Duplicate file found (Hash: ${hex}). Recording in DB and moving to duplicates folder.`,
+        );
+
+        // Crear registro en la DB como DUPLICADO
+        await this.documentRepository.create({
+          fileName: newFileName,
+          md5Hash: hex,
+          state: DocumentState.DUPLICADO,
+        });
+
+        try {
+          fs.renameSync(filePath, destination);
+        } catch (err) {
+          fs.copyFileSync(filePath, destination);
+          fs.unlinkSync(filePath);
+        }
         return;
       }
 
@@ -165,22 +209,28 @@ export class ExtractionService implements OnApplicationBootstrap {
         state: DocumentState.EN_COLA_OCR,
       });
 
-      this.logger.log(`Document created: ${newDoc.id}. Sending to queue cola_ocr.`);
+      this.logger.log(
+        `Document created: ${newDoc.id}. Sending to queue cola_ocr.`,
+      );
 
       // Add to Queue
-      await this.ocrQueue.add('process-ocr', {
-        documentId: newDoc.id,
-        filePath: filePath, // Should we leave it in TMP_IN? Yes, until OCR moves it.
-      }, {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 20000, // 20s delay on retry (Wait, requirement says "2 reintentos y delay de 20s" - usually means fixed delay or specific backoff)
-        }
-      });
-
-    } catch (err) {
-      this.logger.error(`Failed to process file ${fileName}: ${err.message}`);
+      await this.ocrQueue.add(
+        'process-ocr',
+        {
+          documentId: newDoc.id,
+          filePath: filePath, // Should we leave it in TMP_IN? Yes, until OCR moves it.
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 20000, // 20s delay on retry (Wait, requirement says "2 reintentos y delay de 20s" - usually means fixed delay or specific backoff)
+          },
+        },
+      );
+    } catch (err: any) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to process file ${fileName}: ${errMsg}`);
     }
   }
 }

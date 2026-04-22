@@ -1,4 +1,7 @@
-import { FileExtractorStrategy, ExtractedFile } from './file-extractor.strategy';
+import {
+  FileExtractorStrategy,
+  ExtractedFile,
+} from './file-extractor.strategy';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
@@ -17,7 +20,7 @@ export class FtpFileStrategy implements FileExtractorStrategy {
     const password = this.configService.get<string>('FTP_PASSWORD');
     const port = this.configService.get<number>('FTP_PORT', 21);
     const remotePath = this.configService.get<string>('FTP_REMOTE_PATH', '/');
-    
+
     if (!host || !user || !password) {
       this.logger.warn('FTP credentials missing. Skipping extraction.');
       return [];
@@ -40,11 +43,19 @@ export class FtpFileStrategy implements FileExtractorStrategy {
 
       // Cambiamos al directorio remoto primero para asegurar rutas correctas
       await client.cd(remotePath);
-      const allowedExtensions = this.configService.get<string>('ALLOWED_EXTENSIONS', '').split(',').map(ext => ext.trim().toLowerCase());
-      
-      await this.readFtpDirectoryRecursive(client, remotePath, destinationFolder, allowedExtensions, extractedFiles);
+      const allowedExtensions = this.configService
+        .get<string>('ALLOWED_EXTENSIONS', '')
+        .split(',')
+        .map((ext) => ext.trim().toLowerCase());
 
-    } catch(err) {
+      await this.readFtpDirectoryRecursive(
+        client,
+        remotePath,
+        destinationFolder,
+        allowedExtensions,
+        extractedFiles,
+      );
+    } catch (err) {
       this.logger.error(`FTP Error: ${err.message}`);
     } finally {
       client.close();
@@ -53,7 +64,13 @@ export class FtpFileStrategy implements FileExtractorStrategy {
     return extractedFiles;
   }
 
-  private async readFtpDirectoryRecursive(client: Client, currentPath: string, destinationFolder: string, allowedExtensions: string[], extractedFiles: ExtractedFile[]) {
+  private async readFtpDirectoryRecursive(
+    client: Client,
+    currentPath: string,
+    destinationFolder: string,
+    allowedExtensions: string[],
+    extractedFiles: ExtractedFile[],
+  ) {
     await client.cd(currentPath);
     const fileList = await client.list();
 
@@ -61,7 +78,13 @@ export class FtpFileStrategy implements FileExtractorStrategy {
       if (file.isDirectory) {
         // recursively enter
         const nextPath = path.posix.join(currentPath, file.name);
-        await this.readFtpDirectoryRecursive(client, nextPath, destinationFolder, allowedExtensions, extractedFiles);
+        await this.readFtpDirectoryRecursive(
+          client,
+          nextPath,
+          destinationFolder,
+          allowedExtensions,
+          extractedFiles,
+        );
         // Ensure we are back in the correct directory after returning
         await client.cd(currentPath);
         continue;
@@ -76,7 +99,9 @@ export class FtpFileStrategy implements FileExtractorStrategy {
       const uniqueName = Date.now().toString() + '_' + file.name;
       const localFilePath = path.join(destinationFolder, uniqueName);
 
-      this.logger.log(`Downloading FTP file ${file.name} from ${currentPath} to ${localFilePath}`);
+      this.logger.log(
+        `Downloading FTP file ${file.name} from ${currentPath} to ${localFilePath}`,
+      );
 
       await client.downloadTo(localFilePath, file.name);
 

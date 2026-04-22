@@ -11,13 +11,13 @@ import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
 
 @Injectable()
-@Processor('cola_modelo', { 
-  concurrency: parseInt(process.env.MODEL_QUEUE_CONCURRENCY || '2', 10), 
-  limiter: { 
-    max: parseInt(process.env.MODEL_QUEUE_RPM_LIMIT || '15', 10), 
-    duration: 60000 
+@Processor('cola_modelo', {
+  concurrency: parseInt(process.env.MODEL_QUEUE_CONCURRENCY || '2', 10),
+  limiter: {
+    max: parseInt(process.env.MODEL_QUEUE_RPM_LIMIT || '15', 10),
+    duration: 60000,
   },
-  lockDuration: 300000 // 5 minutes to bypass WSL/Docker clock drift
+  lockDuration: 300000, // 5 minutes to bypass WSL/Docker clock drift
 })
 export class ModelProcessor extends WorkerHost {
   private readonly logger = new Logger(ModelProcessor.name);
@@ -55,6 +55,15 @@ export class ModelProcessor extends WorkerHost {
       let resultJson;
 
       try {
+        if (
+          text &&
+          (text.includes('[WORD_FILE_DIRECT_PROCESSING]') ||
+            text.includes('[CONVERTED_PDF_PROCESSING]'))
+        ) {
+          throw new Error(
+            'Este es un trabajo antiguo de Word que ya no es compatible. El archivo se ha movido a la carpeta de no admitidos.',
+          );
+        }
         resultJson = await this.geminiService.extraerJudicial(text);
 
         // Lógica temporalmente deshabilitada por petición del usuario para guardar el JSON puro
@@ -75,8 +84,9 @@ export class ModelProcessor extends WorkerHost {
           }
         }
         */
-      } catch (err) {
-        this.logger.error(`Gemini API Error: ${err.message}`);
+      } catch (err: any) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Gemini API Error: ${errMsg}`);
         throw err;
       }
 
@@ -104,10 +114,11 @@ export class ModelProcessor extends WorkerHost {
           jsonModel: resultJson,
         },
       );
-    } catch (error) {
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Model Processing Failed for Document ${documentId}: ${error.message}`,
-        error.stack,
+        `Model Processing Failed for Document ${documentId}: ${errMsg}`,
+        error instanceof Error ? error.stack : '',
       );
 
       // Update state to MODEL_ERROR before re-throwing for BullMQ retries
@@ -116,7 +127,7 @@ export class ModelProcessor extends WorkerHost {
         DocumentState.MODEL_ERROR,
         {
           jsonModel: {
-            error: error.message,
+            error: errMsg,
             timestamp: new Date().toISOString(),
           },
         },
@@ -156,8 +167,10 @@ export class ModelProcessor extends WorkerHost {
       this.logger.log(
         `Document ${documentId} marked as MODEL_ERROR in database`,
       );
-    } catch (dbError) {
-      this.logger.error(`Failed to update document state: ${dbError.message}`);
+    } catch (dbError: any) {
+      const dbErrMsg =
+        dbError instanceof Error ? dbError.message : String(dbError);
+      this.logger.error(`Failed to update document state: ${dbErrMsg}`);
     }
   }
 }

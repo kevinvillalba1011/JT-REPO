@@ -11,16 +11,16 @@ export class DocumentRepository {
   async create(data: Prisma.DocumentCreateInput): Promise<Document> {
     try {
       this.logger.log(`Creating document with hash: ${data.md5Hash}`);
-      return await this.prisma.document.create({ 
+      return await this.prisma.document.create({
         data: {
           ...data,
           stateLogs: {
             create: {
               previousState: DocumentState.INGRESADO,
               newState: data.state,
-            }
-          }
-        } 
+            },
+          },
+        },
       });
     } catch (error) {
       this.logger.error(`Error creating document: ${error.message}`);
@@ -29,12 +29,16 @@ export class DocumentRepository {
   }
 
   async findByHash(md5Hash: string): Promise<Document | null> {
-    return this.prisma.document.findUnique({
+    return this.prisma.document.findFirst({
       where: { md5Hash },
     });
   }
 
-  async updateState(id: string, state: DocumentState, extraData?: Prisma.DocumentUpdateInput): Promise<Document> {
+  async updateState(
+    id: string,
+    state: DocumentState,
+    extraData?: Prisma.DocumentUpdateInput,
+  ): Promise<Document> {
     this.logger.log(`Updating document ${id} to state ${state}`);
     const currentDoc = await this.findById(id);
 
@@ -47,8 +51,8 @@ export class DocumentRepository {
           create: {
             previousState: currentDoc ? currentDoc.state : null,
             newState: state,
-          }
-        }
+          },
+        },
       },
     });
   }
@@ -62,7 +66,7 @@ export class DocumentRepository {
   async findAll(): Promise<Document[]> {
     return this.prisma.document.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { stateLogs: true }
+      include: { stateLogs: true },
     });
   }
 
@@ -97,7 +101,7 @@ export class DocumentRepository {
         orderBy: { createdAt: 'desc' },
         skip,
         take,
-        include: { stateLogs: true }
+        include: { stateLogs: true },
       }),
       this.prisma.document.count({ where: whereClause }),
     ]);
@@ -113,10 +117,13 @@ export class DocumentRepository {
 
     const total = await this.prisma.document.count();
 
-    const stats = groups.reduce((acc, curr) => {
-      acc[curr.state] = curr._count;
-      return acc;
-    }, {} as Record<string, number>);
+    const stats = groups.reduce(
+      (acc, curr) => {
+        acc[curr.state] = curr._count;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return {
       total,

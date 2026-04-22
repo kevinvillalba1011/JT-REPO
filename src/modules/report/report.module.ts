@@ -12,7 +12,7 @@ import { GmailReportStrategy } from './strategies/gmail-report.strategy';
     ReportService,
     LocalReportStrategy,
     FtpReportStrategy,
-    GmailReportStrategy
+    GmailReportStrategy,
   ],
 })
 export class ReportModule {}

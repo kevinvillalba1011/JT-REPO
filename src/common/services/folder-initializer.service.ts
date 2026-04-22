@@ -14,7 +14,7 @@ export class FolderInitializerService implements OnApplicationBootstrap {
       this.configService.get<string>('IN_PATH', './local/in'),
       this.configService.get<string>('OCR_PATH', './local/ocr'),
       this.configService.get<string>('DONE_PATH', './local/done'),
-      
+
       // Mode-specific Local Paths
       this.configService.get<string>('LOCAL_SOURCE_PATH', './local/ftp'),
       this.configService.get<string>('LOCAL_CLIENTS_PATH', './local/data'),
@@ -26,7 +26,7 @@ export class FolderInitializerService implements OnApplicationBootstrap {
 
     this.logger.log('Validating system folders...');
 
-    folders.forEach(folder => {
+    folders.forEach((folder) => {
       if (!fs.existsSync(folder)) {
         this.logger.log(`Creating folder: ${folder}`);
         fs.mkdirSync(folder, { recursive: true });
