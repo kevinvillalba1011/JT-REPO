@@ -8,13 +8,7 @@ export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private readonly genAI: GoogleGenerativeAI;
 
-  // Modelos ordenados por prelación. Si uno falla por cuota individual (RPM/TPM),
-  // el Cascade Fallback saltará al siguiente que tiene pools de cuota independientes.
-  private readonly fallbackChain = [
-    'gemini-2.0-flash-exp', // Alta prioridad / Experimental
-    'gemini-1.5-flash', // Estándar / Rápido
-    'gemini-1.5-pro', // Alta calidad / Fallback seguro
-  ];
+  private readonly fallbackChain: string[];
 
   constructor(
     private readonly configService: ConfigService,
@@ -22,10 +16,27 @@ export class GeminiService {
   ) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not defined in environment variables');
+      throw new Error(
+        'GEMINI_API_KEY is not defined in environment variables',
+      );
     }
     this.genAI = new GoogleGenerativeAI(apiKey);
+
+    // Cargar cadena de modelos desde .env o usar por defecto
+    const modelsConfig = this.configService.get<string>('GEMINI_FALLBACK_MODELS');
+    if (modelsConfig) {
+      this.fallbackChain = modelsConfig.split(',').map((m) => m.trim());
+    } else {
+      this.fallbackChain = [
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-1.5-flash',
+      ];
+
+    }
+    this.logger.log(`Gemini Fallback Chain initialized: ${this.fallbackChain.join(' -> ')}`);
   }
+
 
   /**
    * Extrae los campos judiciales del texto o archivo usando Structured Outputs nativos
