@@ -34,6 +34,12 @@ export class DocumentRepository {
     });
   }
 
+  async findByFileName(fileName: string): Promise<Document | null> {
+    return this.prisma.document.findFirst({
+      where: { fileName },
+    });
+  }
+
   async updateState(
     id: string,
     state: DocumentState,

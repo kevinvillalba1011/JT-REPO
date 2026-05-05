@@ -43,6 +43,8 @@ services:
     container_name: jt-app
     ports:
       - '3000:3000'
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-jt_documents}
@@ -56,18 +58,16 @@ services:
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - GCP_LOCATION=${GCP_LOCATION}
       - DOCUMENT_AI_PROCESSOR_ID=${DOCUMENT_AI_PROCESSOR_ID}
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/key.json
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/secret.json
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - db
       - redis
     volumes:
-      - ./local/in:/app/local/in
-      - ./local/ocr:/app/local/ocr
-      - ./local/done:/app/local/done
-      - ./local/reports:/app/local/reports
-      - ./local/ftp:/app/local/ftp
-      - ./local/data:/app/local/data
+      - ./local:/app/local
+      - ${SERVER_PATH_1}:/app/source/1
+      - ${SERVER_PATH_2}:/app/source/2
+      - ${SERVER_PATH_3}:/app/source/3
       - ./secrets:/app/secrets
     networks:
       - jt-network

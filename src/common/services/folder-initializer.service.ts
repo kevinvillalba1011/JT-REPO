@@ -16,7 +16,10 @@ export class FolderInitializerService implements OnApplicationBootstrap {
       this.configService.get<string>('DONE_PATH', './local/done'),
 
       // Mode-specific Local Paths
-      this.configService.get<string>('LOCAL_SOURCE_PATH', './local/ftp'),
+      ...this.configService
+        .get<string>('LOCAL_SOURCE_PATHS', './local/ftp')
+        .split(',')
+        .map((p) => p.trim()),
       this.configService.get<string>('LOCAL_CLIENTS_PATH', './local/data'),
       this.configService.get<string>('LOCAL_REPORTS_PATH', './local/reports'),
 

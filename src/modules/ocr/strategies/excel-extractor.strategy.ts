@@ -7,7 +7,7 @@ export class ExcelExtractorStrategy implements TextExtractorStrategy {
   private readonly logger = new Logger(ExcelExtractorStrategy.name);
 
   canHandle(fileExt: string): boolean {
-    return ['.xls', '.xlsx', '.csv'].includes(fileExt.toLowerCase());
+    return false; // Deshabilitado para que todo pase por la lógica masiva en OcrProcessor
   }
 
   async extractText(filePath: string): Promise<string> {

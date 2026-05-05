@@ -16,14 +16,14 @@ export class GeminiService {
   ) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
-      throw new Error(
-        'GEMINI_API_KEY is not defined in environment variables',
-      );
+      throw new Error('GEMINI_API_KEY is not defined in environment variables');
     }
     this.genAI = new GoogleGenerativeAI(apiKey);
 
     // Cargar cadena de modelos desde .env o usar por defecto
-    const modelsConfig = this.configService.get<string>('GEMINI_FALLBACK_MODELS');
+    const modelsConfig = this.configService.get<string>(
+      'GEMINI_FALLBACK_MODELS',
+    );
     if (modelsConfig) {
       this.fallbackChain = modelsConfig.split(',').map((m) => m.trim());
     } else {
@@ -32,11 +32,11 @@ export class GeminiService {
         'gemini-2.5-pro',
         'gemini-1.5-flash',
       ];
-
     }
-    this.logger.log(`Gemini Fallback Chain initialized: ${this.fallbackChain.join(' -> ')}`);
+    this.logger.log(
+      `Gemini Fallback Chain initialized: ${this.fallbackChain.join(' -> ')}`,
+    );
   }
-
 
   /**
    * Extrae los campos judiciales del texto o archivo usando Structured Outputs nativos

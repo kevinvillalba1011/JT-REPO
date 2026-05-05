@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -19,6 +20,9 @@ enum DocumentState {
   IA_OK
   FORMATO_NO_SOPORTADO
   DUPLICADO
+  PROCESANDO_EXCEL
+  EXCEL_OK
+  ERROR_EXCEL
 }
 
 
@@ -49,4 +53,22 @@ model DocumentStateLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("document_state_logs")
+}
+
+model ExcelRecord {
+  id          String   @id @default(uuid())
+  excelName   String   @map("nombre_excel")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  consecutivo Int?     @map("consecutivo")
+  nroOficio   String?  @map("nro_oficio")
+  resolucion1 String?  @map("resolucion1") @db.Text
+  resolucion2 String?  @map("resolucion2") @db.Text
+  resolucion3 String?  @map("resolucion3") @db.Text
+  resolucion4 String?  @map("resolucion4") @db.Text
+  idDemandado String?  @map("id_demandado")
+  nombre      String?  @map("nombre")
+
+  @@index([idDemandado])
+  @@map("excel_records")
 }

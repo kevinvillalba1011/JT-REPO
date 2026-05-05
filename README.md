@@ -72,12 +72,15 @@ El proyecto utiliza **Prisma ORM**. Si en el futuro necesitas agregar nuevas tab
 **1. Cambias el modelo:**  
 Modifica el archivo temporalmente genérico `schema.prisma`.
 
-**2. Creas una Migración de Base de Datos:**  
-No utilices `db push` para producción. Para dejar registro de tu cambio de estructura de manera formal, genera un archivo de migración SQL usando el siguiente comando:
-
-```bash
-npx prisma migrate dev --name describe_tu_cambio
-```
+**2. Creas una Migración de Base de Datos (Flujo Seguro):**  
+Para evitar fallos en producción, **no** utilices `prisma migrate dev` en entornos productivos. El flujo correcto es:
+- **Desarrollo**: Modifica el `schema.prisma`.
+- **Generar SQL**: Usa el siguiente comando para obtener un script SQL puro:
+  ```bash
+  npx prisma migrate diff --from-schema-datamodel schema.prisma --to-schema-datamodel schema.prisma --script > migration.sql
+  ```
+- **Sincronizar**: Ejecuta `npx prisma generate` para actualizar los tipos en NestJS.
+- **Producción**: Aplica el archivo `migration.sql` manualmente en la base de datos.
 
 _(Este comando generará una carpeta en `/prisma/migrations/` que DEBE subirse al repositorio)_
 
@@ -158,7 +161,10 @@ El sistema soporta tres estrategias controladas por la variable `GLOBAL_MODE`. E
 Estrategia ideal para pruebas y servidores locales. Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local/`).
 
 - **Base de Clientes:** Si subes clientes nuevos, debes actualizar y reemplazar el archivo local en `./local/data/clients.csv`. *(El sistema lo relee y refresca en caliente automáticamente cada 1 hora)*.
-- **Ingesta de Oficios:** Los archivos crudos a analizar (PDF, JPG, XLS, CSV) deben colocarse en `./local/ftp/` (Simulando un host físico de entrada). La recolección es **recursiva**, el bot penetrará todas las sub-carpetas infinitamente buscando archivos válidos.
+- **Ingesta de Oficios:** El sistema puede leer de múltiples carpetas simultáneamente. 
+  - **En el Servidor:** Configura las rutas reales de tus carpetas en el `.env` usando `SERVER_PATH_1`, `SERVER_PATH_2` y `SERVER_PATH_3`.
+  - **Configuración:** La variable `LOCAL_SOURCE_PATHS` en el `.env` apunta a las rutas internas del contenedor (`/app/source/1`, etc.) que Docker mapea automáticamente a tus carpetas del servidor.
+  - **Procesamiento:** El bot escanea todas estas ubicaciones de forma **recursiva** buscando archivos válidos.
 - **Reportes Finales:** Finalizada la IA, tu CSV limpio segmentado por campos se guardará con la fecha de hoy dentro de `./local/reports/`.
 - **Archivos Especiales:** Los archivos duplicados (MD5 existente) se mueven a `./local/duplicates` con un timestamp. Los archivos con formato no soportado (ej. `.docx`, `.zip`) se mueven a `./local/unsupported`.
 - *(Rutas de Transición)*: `local/in/`, `local/ocr/`, `local/done/` son internas del pipeline del sistema (Movit). No colocar ni tocar archivos allí para evitar disrumpir transacciones.
@@ -186,6 +192,8 @@ Gestión remota conectada a flujos judiciales vivos. Requiere `GMAIL_USER` y `GM
 | Variable                   | Descripción                                      |
 | -------------------------- | ------------------------------------------------ |
 | `GLOBAL_MODE`              | `LOCAL` \| `FTP` \| `GMAIL` — Fuente del Sistema |
+| `SERVER_PATH_1...3`        | Rutas absolutas del servidor hacia las 3 carpetas a monitorear |
+| `LOCAL_SOURCE_PATHS`       | Mapeo interno de carpetas en el contenedor separadas por comas |
 | `TENANT_PROFILE`           | Controla esquema Multi-Tenant (ej. `default`)    |
 | `DATABASE_URL`             | URL de conexión a PostgreSQL                     |
 | `IN_PATH`                  | Carpeta de entrada (`./local/in`)                |
@@ -209,27 +217,32 @@ Gestión remota conectada a flujos judiciales vivos. Requiere `GMAIL_USER` y `GM
  (Orquestador de Estrategias)
           │
           ├─► Archivo .PDF / .JPG / .PNG 
-          │      └─► (DocumentAiStrategy) -> Llama a Google Document API
+          │      └─► (DocumentAiStrategy) -> OCR -> Gemini (cola_modelo) -> IA_OK
           │
-          ├─► Archivo .XLS / .XLSX / .CSV 
-          │      └─► (ExcelStrategy) -> Bypass. Convierte hojas a texto estructurado.
+          ├─► Archivo .XLS / .XLSX / .CSV (Carga Masiva)
+          │      └─► (MassiveExcelService) -> Bypass IA y OCR
+          │          │
+          │          ├─► PROCESANDO_EXCEL (Lectura por Streams/Lotes)
+          │          │
+          │          └─► EXCEL_OK (Éxito. Datos en tabla excel_records)
           │
           ▼
    PROCESANDO_OCR 
           │
           ├─► ERRORES POSIBLES:
-          │      • OCR_UNREADABLE (Imagen borrosa, escaneo en blanco)
-          │      • ERROR_OCR (Excel corrupto con contraseña, falla de Red GCP)
-          │      • FORMATO_NO_SOPORTADO (El archivo se mueve a local/unsupported)
+          │      • OCR_UNREADABLE (Imagen borrosa)
+          │      • ERROR_OCR (Falla de Red o Archivo Corrupto)
+          │      • ERROR_EXCEL (Error en estructura o lectura del Excel)
+          │      • FORMATO_NO_SOPORTADO (Se mueve a local/unsupported)
           │
           ▼
    EN_COLA_MODELO (Se inyecta el Texto puro a Gemini)
           │
           ├─► ERRORES POSIBLES:
-          │      • MODEL_ERROR (Gemini alucinó o retornó un JSON cortado/incompleto)
+          │      • MODEL_ERROR (Gemini alucinó o JSON incompleto)
           │
           ▼
-        IA_OK (Éxito. Archivo listo para exportarse a las 23:00)
+         IA_OK (Éxito para documentos individuales analizados por IA)
 ```
 
 **Auto-Recuperación (Resilience):**
