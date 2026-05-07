@@ -50,6 +50,7 @@ services:
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-jt_documents}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - LOCAL_SOURCE_PATHS=/app/source/1,/app/source/2,/app/source/3
       # System Internal Paths
       - IN_PATH=/app/local/in
       - OCR_PATH=/app/local/ocr
