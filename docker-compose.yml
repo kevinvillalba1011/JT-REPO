@@ -17,9 +17,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: jt-redis
+    container_name: jt-redis-llm
     ports:
-      - '6379:6379'
+      - '6380:6379' # Mapeamos el puerto 6380 (fuera) al 6379 (dentro)
     networks:
       - jt-network
 
