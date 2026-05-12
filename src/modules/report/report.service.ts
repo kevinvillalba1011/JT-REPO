@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnApplicationBootstrap, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  Inject,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { DocumentRepository } from '../documents/repositories/document.repository';
@@ -27,7 +32,7 @@ export class ReportService {
   @Cron(process.env.CRON_REPORT_SCHEDULE || '0 23 * * *')
   async handleReport() {
     this.logger.log('Starting Report Generation...');
-    
+
     // Get IA_OK documents
     const docs = await this.documentRepository.findByState(DocumentState.IA_OK);
     this.logger.log(`Found ${docs.length} documents to report.`);
@@ -36,17 +41,23 @@ export class ReportService {
 
     // Generate content
     const reportLines: string[] = [];
-    
+
     for (const doc of docs) {
       const json = doc.jsonModel as any;
       const demandadoId = json ? json[this.profile.identifierKey] : null;
-      
-      const isClient = demandadoId ? this.clientService.isClient(demandadoId) : false;
+
+      const isClient = demandadoId
+        ? this.clientService.isClient(demandadoId)
+        : false;
 
       if (isClient) {
-        reportLines.push(this.generateDynamicFields(doc, this.profile.clientFields));
+        reportLines.push(
+          this.generateDynamicFields(doc, this.profile.clientFields),
+        );
       } else {
-        reportLines.push(this.generateDynamicFields(doc, this.profile.nonClientFields));
+        reportLines.push(
+          this.generateDynamicFields(doc, this.profile.nonClientFields),
+        );
       }
     }
 
@@ -74,8 +85,8 @@ export class ReportService {
   }
 
   private generateDynamicFields(doc: Document, fieldsArray: string[]): string {
-    const json = doc.jsonModel as any || {};
-    
+    const json = (doc.jsonModel as any) || {};
+
     // Default base columns for every exported document (system data)
     const baseColumns = [
       doc.id,
@@ -83,20 +94,20 @@ export class ReportService {
       doc.state,
       doc.createdAt.toISOString(),
       doc.updatedAt.toISOString(),
-      doc.md5Hash
+      doc.md5Hash,
     ];
 
     // Dynamic columns from structured JSON model based on schema
-    const dynamicColumns = fieldsArray.map(field => {
+    const dynamicColumns = fieldsArray.map((field) => {
       const value = json[field];
       if (value === undefined || value === null) return 'N/A';
-      
+
       // If the field is an array (like multi-selection items), join them
       if (Array.isArray(value)) return `"${value.join(' | ')}"`;
-      
+
       // Wrap strings in quotes if they contain commas to avoid CSV breakage
       if (typeof value === 'string' && value.includes(',')) return `"${value}"`;
-      
+
       return value;
     });
 

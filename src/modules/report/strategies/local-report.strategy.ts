@@ -11,7 +11,10 @@ export class LocalReportStrategy implements ReportStrategy {
   constructor(private readonly configService: ConfigService) {}
 
   async saveReport(fileName: string, content: string): Promise<void> {
-    const reportOutputPath = this.configService.get<string>('LOCAL_REPORTS_PATH', './local/reports');
+    const reportOutputPath = this.configService.get<string>(
+      'LOCAL_REPORTS_PATH',
+      './local/reports',
+    );
     const fullPath = path.join(reportOutputPath, fileName);
     const dir = path.dirname(fullPath);
 

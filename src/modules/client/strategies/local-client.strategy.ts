@@ -11,9 +11,15 @@ export class LocalClientStrategy implements ClientSourceStrategy {
   constructor(private readonly configService: ConfigService) {}
 
   async fetchClients(): Promise<string[]> {
-    let clientsPath = this.configService.get<string>('LOCAL_CLIENTS_PATH', './local/data');
-    const clientsFileName = this.configService.get<string>('CSV_CLIENTS_FILE', 'clients.csv');
-    
+    let clientsPath = this.configService.get<string>(
+      'LOCAL_CLIENTS_PATH',
+      './local/data',
+    );
+    const clientsFileName = this.configService.get<string>(
+      'CSV_CLIENTS_FILE',
+      'clients.csv',
+    );
+
     // In Docker, the volume mapped is a directory. If someone maps the directory,
     // we append the dynamic CSV filename to avoid EISDIR read error.
     if (!clientsPath.endsWith('.csv')) {
@@ -30,8 +36,8 @@ export class LocalClientStrategy implements ClientSourceStrategy {
       // Simple CSV parsing: assume one ID per line or comma separated ID column
       return content
         .split(/\r?\n/)
-        .map(line => line.split(',')[0].trim()) // Taking first column as ID
-        .filter(id => id.length > 0);
+        .map((line) => line.split(',')[0].trim()) // Taking first column as ID
+        .filter((id) => id.length > 0);
     } catch (err) {
       this.logger.error(`Error reading clients CSV: ${err.message}`);
       return [];

@@ -50,7 +50,9 @@ flowchart TD
 ### 📋 Resumen Literario del Flujo
 1. **El Reloj:** Cada 15 segundos tu aplicación se despierta.
 2. **La Pesca (FTP):** Va al servidor FTP remoto, se conecta con las credenciales, escanea las carpetas y descarga cualquier documento permitido, añadiéndole un prefijo de número al nombre para que nunca haya colisión de nombres. Los archivos caen en el buche local (`./local/in/`).
-3. **El Filtro (MD5):** A cada archivo descargado se le saca la huella digital (MD5). Va y le pregunta a PostgreSQL si esa huella ya existe. Si la respuesta es sí, lo borra sin asco (ahorrando tiempo y costos de API). Si es nuevo, lo bautiza en la BD y lo empuja a la primera cola.
+3. **El Filtro (MD5):** A cada archivo descargado se le saca la huella digital (MD5). Va y le pregunta a PostgreSQL si esa huella ya existe. Si la respuesta es sí, lo mueve a `./local/duplicates` con un prefijo de tiempo para auditoría (ahorrando costos de API). Si es nuevo, lo bautiza en la BD y lo empuja a la primera cola.
+4. **El Validador (OCR):** Si el archivo llega al OCR pero su extensión no es soportada (ej: .docx, .zip), se mueve automáticamente a `./local/unsupported` con el estado `FORMATO_NO_SOPORTADO`.
+
 4. **La Lectura (OCR):** El primer procesador virtual (Worker) agarra el archivo, se lo manda enterito en Base64 a Document AI de Google, recibe de regreso toda la "sopa de letras" extraída, mueve el archivo físico a la carpeta intermedia (`./local/ocr/`) y empuja este texto a la segunda cola.
 5. **El Cerebro (Gemini):** El segundo procesador virtual agarra el texto masticado, le pega tus reglas estrictas de extracción (del archivo `bbva.profile.ts`) y se lo manda a Gemini.
 6. **El Archivo (Final):** Gemini escupe el JSON puro de los demandantes, fechas y valores. Ese JSON se inyecta impecable a PostgreSQL (Marcado como `IA_OK`), y el archivo PDF descansa para siempre en tu carpeta `./local/done/`.

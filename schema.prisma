@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -17,12 +18,19 @@ enum DocumentState {
   PROCESANDO_MODELO
   MODEL_ERROR
   IA_OK
+  FORMATO_NO_SOPORTADO
+  DUPLICADO
+  PROCESANDO_EXCEL
+  EXCEL_OK
+  ERROR_EXCEL
 }
+
+
 
 model Document {
   id        String        @id @default(uuid())
   fileName  String        @map("nombre_archivo")
-  md5Hash   String        @unique @map("hash_md5")
+  md5Hash   String        @map("hash_md5")
   state     DocumentState @map("estado")
   ocrText   String?       @map("texto_ocr") @db.Text
   jsonModel Json?         @map("json_modelo")
@@ -45,4 +53,22 @@ model DocumentStateLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("document_state_logs")
+}
+
+model ExcelRecord {
+  id          String   @id @default(uuid())
+  excelName   String   @map("nombre_excel")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  consecutivo Int?     @map("consecutivo")
+  nroOficio   String?  @map("nro_oficio")
+  resolucion1 String?  @map("resolucion1") @db.Text
+  resolucion2 String?  @map("resolucion2") @db.Text
+  resolucion3 String?  @map("resolucion3") @db.Text
+  resolucion4 String?  @map("resolucion4") @db.Text
+  idDemandado String?  @map("id_demandado")
+  nombre      String?  @map("nombre")
+
+  @@index([idDemandado])
+  @@map("excel_records")
 }

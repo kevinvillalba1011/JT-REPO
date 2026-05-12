@@ -1,0 +1,28 @@
+# Dependencias y compilación
+node_modules
+dist
+build
+
+# Datos Locales (Contiene PDFs, Imágenes, Excels, etc.)
+local
+ftp
+local/*
+ftp/*
+
+# Base de Datos y Migraciones
+prisma/migrations
+schema.prisma
+
+# Archivos de bloqueo
+package-lock.json
+pnpm-lock.yaml
+
+# Configuración de herramientas
+.gemini
+.vscode
+.idea
+
+# Reportes
+*.csv
+*.xlsx
+*.pdf

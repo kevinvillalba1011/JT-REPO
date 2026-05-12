@@ -11,6 +11,7 @@ import { Queue } from 'bullmq';
 import { TextExtractorStrategy } from './strategies/text-extractor.strategy';
 import { DocumentAiStrategy } from './strategies/document-ai.strategy';
 import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
+import { MassiveExcelService } from './services/massive-excel.service';
 
 @Processor('cola_ocr', {
   concurrency: 5,
@@ -27,6 +28,7 @@ export class OcrProcessor extends WorkerHost {
     @InjectQueue('cola_modelo') private readonly modelQueue: Queue,
     private readonly docAiStrategy: DocumentAiStrategy,
     private readonly excelStrategy: ExcelExtractorStrategy,
+    private readonly massiveExcelService: MassiveExcelService,
   ) {
     super();
     this.ocrPath = this.configService.get<string>('OCR_PATH', './local/ocr');
@@ -37,6 +39,19 @@ export class OcrProcessor extends WorkerHost {
     const { documentId, filePath } = job.data;
     this.logger.log(`Processing Job ${job.id} for Document ${documentId}`);
 
+    // Verificar si el archivo existe antes de empezar
+    if (!fs.existsSync(filePath)) {
+      this.logger.error(`Archivo no encontrado para procesar: ${filePath}`);
+      await this.documentRepository.updateState(
+        documentId,
+        DocumentState.ERROR_OCR,
+        {
+          ocrText: `Error: El archivo físico desapareció de la carpeta de entrada.`,
+        },
+      );
+      return;
+    }
+
     // Update State: PROCESANDO_OCR
     await this.documentRepository.updateState(
       documentId,
@@ -45,10 +60,74 @@ export class OcrProcessor extends WorkerHost {
 
     try {
       const ext = path.extname(filePath).toLowerCase();
+      const baseName = path.basename(filePath);
+
+      // --- LÓGICA DE EXCEL/CSV MASIVO (.xlsx, .xls, .csv) ---
+      if (['.xlsx', '.xls', '.csv'].includes(ext)) {
+        this.logger.log(
+          `Detectado archivo masivo ${ext}: ${baseName}. Iniciando carga directa.`,
+        );
+
+        await this.documentRepository.updateState(
+          documentId,
+          DocumentState.PROCESANDO_EXCEL,
+        );
+
+        await this.massiveExcelService.process(filePath, baseName);
+
+        // Mover a la carpeta de procesados (OCR_PATH como indica tu flujo)
+        const newFilePath = path.join(this.ocrPath, baseName);
+        try {
+          fs.renameSync(filePath, newFilePath);
+        } catch (err) {
+          fs.copyFileSync(filePath, newFilePath);
+          fs.unlinkSync(filePath);
+        }
+
+        await this.documentRepository.updateState(
+          documentId,
+          DocumentState.EXCEL_OK,
+          {
+            ocrText:
+              'Archivo Excel masivo procesado correctamente (Bypass IA).',
+          },
+        );
+        this.logger.log(
+          `Carga masiva finalizada para ${baseName}. Estado: EXCEL_OK`,
+        );
+        return;
+      }
+
       const strategy = this.strategies.find((s) => s.canHandle(ext));
 
       if (!strategy) {
-        throw new Error(`Unsupported file extension: ${ext}`);
+        this.logger.warn(
+          `Unsupported file extension: ${ext}. Moving to unsupported folder.`,
+        );
+
+        const unsupportedPath = this.configService.get<string>(
+          'UNSUPPORTED_PATH',
+          './local/unsupported',
+        );
+        if (!fs.existsSync(unsupportedPath))
+          fs.mkdirSync(unsupportedPath, { recursive: true });
+
+        const baseName = path.basename(filePath);
+        const destination = path.join(unsupportedPath, baseName);
+
+        try {
+          fs.renameSync(filePath, destination);
+        } catch (err) {
+          fs.copyFileSync(filePath, destination);
+          fs.unlinkSync(filePath);
+        }
+
+        await this.documentRepository.updateState(
+          documentId,
+          DocumentState.FORMATO_NO_SOPORTADO, // Make sure this exists in Prisma or use a generic state
+          { ocrText: `Formato no soportado: ${ext}` },
+        );
+        return;
       }
 
       const extractedText = await strategy.extractText(filePath);
@@ -66,7 +145,7 @@ export class OcrProcessor extends WorkerHost {
       this.logger.log(`OCR Extracted ${extractedText.length} characters.`);
 
       // Move file to TMP_OCR_PATH
-      const baseName = path.basename(filePath);
+      // baseName ya está declarado arriba
       const newFilePath = path.join(this.ocrPath, baseName);
 
       try {
@@ -105,17 +184,21 @@ export class OcrProcessor extends WorkerHost {
           },
         },
       );
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : '';
+
       this.logger.error(
-        `OCR Error for Document ${documentId}: ${error.message}`,
-        error.stack,
+        `OCR Error for Document ${documentId}: ${errorMessage}`,
+        errorStack,
       );
       // Update document state to ERROR_OCR before throwing (for visibility)
       await this.documentRepository.updateState(
         documentId,
         DocumentState.ERROR_OCR,
         {
-          ocrText: `Error: ${error.message}`,
+          ocrText: `Error: ${errorMessage}`,
         },
       );
       // Re-throw so BullMQ can handle retries
@@ -145,8 +228,10 @@ export class OcrProcessor extends WorkerHost {
         },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);
-    } catch (dbError) {
-      this.logger.error(`Failed to update document state: ${dbError.message}`);
+    } catch (dbError: any) {
+      const dbErrorMessage =
+        dbError instanceof Error ? dbError.message : String(dbError);
+      this.logger.error(`Failed to update document state: ${dbErrorMessage}`);
     }
   }
 }

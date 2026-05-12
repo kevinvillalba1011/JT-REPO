@@ -7,9 +7,7 @@ import type { TenantProfile } from '../../modules/tenant/interfaces/tenant-profi
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private readonly genAI: GoogleGenerativeAI;
-  
-  // Modelos ordenados por prelación. Si uno falla por cuota individual (RPM/TPM), 
-  // el Cascade Fallback saltará al siguiente que tiene pools de cuota independientes.
+
   private readonly fallbackChain: string[];
 
   constructor(
@@ -18,20 +16,39 @@ export class GeminiService {
   ) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
-      this.logger.warn('GEMINI_API_KEY not found. GeminiService might fail.');
+      throw new Error('GEMINI_API_KEY is not defined in environment variables');
     }
-    this.genAI = new GoogleGenerativeAI(apiKey || 'dummy-key');
-    
-    // Obtenemos los modelos desde Config, o usamos el fallback default
-    const fallbackStr = this.configService.get<string>('GEMINI_FALLBACK_MODELS', 'gemini-2.5-flash,gemini-2.5-pro,gemini-2.0-flash');
-    this.fallbackChain = fallbackStr.split(',').map((model) => model.trim());
+    this.genAI = new GoogleGenerativeAI(apiKey);
+
+    // Cargar cadena de modelos desde .env o usar por defecto
+    const modelsConfig = this.configService.get<string>(
+      'GEMINI_FALLBACK_MODELS',
+    );
+    if (modelsConfig) {
+      this.fallbackChain = modelsConfig.split(',').map((m) => m.trim());
+    } else {
+      this.fallbackChain = [
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-1.5-flash',
+      ];
+    }
+    this.logger.log(
+      `Gemini Fallback Chain initialized: ${this.fallbackChain.join(' -> ')}`,
+    );
   }
 
   /**
-   * Extrae los campos judiciales del texto usando Structured Outputs nativos
+   * Extrae los campos judiciales del texto o archivo usando Structured Outputs nativos
    */
-  async extraerJudicial(text: string): Promise<any> {
-    this.logger.log('Starting data extraction via Gemini API with Structured Outputs');
+  async extraerJudicial(
+    text: string,
+    fileBuffer?: Buffer,
+    mimeType?: string,
+  ): Promise<any> {
+    this.logger.log(
+      'Starting data extraction via Gemini API with Structured Outputs',
+    );
 
     const prompt = this.profile.promptTemplate.replace('{{text}}', text);
     let lastError: Error = new Error('No models available for extraction');
@@ -47,32 +64,52 @@ export class GeminiService {
           },
         }, { timeout: timeoutMs });
 
-        this.logger.log(`Intentando extracción de JSON con el modelo: ${modelId}...`);
-        const result = await model.generateContent(prompt);
-        const generatedText = result.response.text();
-        
-        this.logger.debug(`Gemini Result estructurado [via ${modelId}]: ${generatedText.substring(0, 100)}...`);
-        return JSON.parse(generatedText);
+        this.logger.log(
+          `Intentando extracción de JSON con el modelo: ${modelId}...`,
+        );
 
-      } catch (err) {
-        lastError = err;
-        const msg = err.message.toLowerCase();
-        
-        // Si es error de cuota individual (RPM/RPD/TPM) o sobrecarga del servidor de Google (503)
-        // intentamos bypass usando un modelo alternativo del pool de Google (Fallback Routing)
-        if (msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') || msg.includes('503')) {
-          this.logger.warn(`Modelo [${modelId}] sin cuota o congestionado. Disparando Fallback Automático al siguiente modelo...`);
-          continue; 
-        } else {
-          // Si el error es de sintaxis, autenticación cruzada o error de validación, reventar el proceso inmediatamente
-          throw err;
+        const parts: any[] = [{ text: prompt }];
+
+        if (fileBuffer && mimeType) {
+          parts.push({
+            inlineData: {
+              data: fileBuffer.toString('base64'),
+              mimeType: mimeType,
+            },
+          });
         }
+
+        const result = await model.generateContent(parts);
+        const generatedText = result.response.text();
+
+        this.logger.debug(
+          `Gemini Result multi-modal [via ${modelId}]: ${generatedText.substring(0, 100)}...`,
+        );
+        const resultJson = JSON.parse(generatedText);
+
+        // Reordenar las claves del JSON (Garantía de orden del Excel)
+        const orderedJson = {};
+        this.profile.clientFields.forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(resultJson, key)) {
+            orderedJson[key] = resultJson[key];
+          } else {
+            orderedJson[key] = '';
+          }
+        });
+
+        return orderedJson;
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const errMsg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Error con modelo ${modelId}: ${errMsg}. Intentando fallback...`,
+        );
       }
     }
 
-    // Si terminamos de iterar la cadena entera, es porque quemamos toda la cuota diaria global de Models en el Tier.
-    // Solo hasta este punto soltamos la bomba hacia arriba (BullMQ) para que espere en frío usando Backoff Exponencial severo.
-    this.logger.error('CRÍTICO: Agotamiento Global de Modelos. Se quemaron los Rate Limits en toda la cadena de Fallback.');
+    this.logger.error(
+      'CRÍTICO: Agotamiento Global de Modelos. Se quemaron los Rate Limits en toda la cadena de Fallback.',
+    );
     throw lastError;
   }
 }

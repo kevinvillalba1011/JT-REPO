@@ -5,11 +5,14 @@ import { DocumentsModule } from '../documents/documents.module';
 import { ConfigModule } from '@nestjs/config';
 import { DocumentAiStrategy } from './strategies/document-ai.strategy';
 import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
+import { MassiveExcelService } from './services/massive-excel.service';
+import { PrismaModule } from '@/common/prisma/prisma.module';
 
 @Module({
   imports: [
     DocumentsModule,
     ConfigModule,
+    PrismaModule,
     BullModule.registerQueue({
       name: 'cola_modelo', // We are producing to this queue
     }),
@@ -29,7 +32,8 @@ import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
   providers: [
     OcrProcessor,
     DocumentAiStrategy,
-    ExcelExtractorStrategy
+    ExcelExtractorStrategy,
+    MassiveExcelService,
   ],
 })
 export class OcrModule {}
