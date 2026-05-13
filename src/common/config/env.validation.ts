@@ -25,6 +25,18 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   GCP_PROJECT_ID: string;
+
+  @IsString()
+  @IsOptional()
+  INTEGRATION_AUTH_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  INTEGRATION_AUTH_PAYLOAD?: string;
+
+  @IsString()
+  @IsOptional()
+  INTEGRATION_DATA_URL?: string;
 }
 
 export function validate(config: Record<string, unknown>) {

@@ -12,6 +12,7 @@ services:
       POSTGRES_DB: ${DB_NAME:-jt_documents}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: "no"
     networks:
       - jt-network
 
@@ -20,6 +21,7 @@ services:
     container_name: jt-redis-llm
     ports:
       - '6380:6379' # Mapeamos el puerto 6380 (fuera) al 6379 (dentro)
+    restart: "no"
     networks:
       - jt-network
 
@@ -33,6 +35,7 @@ services:
       - USERS=testuser|testpass
     volumes:
       - ./ftp:/ftp/testuser
+    restart: "no"
     networks:
       - jt-network
 
@@ -70,6 +73,7 @@ services:
       - ${SERVER_PATH_2}:/app/source/2
       - ${SERVER_PATH_3}:/app/source/3
       - ./secrets:/app/secrets
+    restart: "no"
     networks:
       - jt-network
 

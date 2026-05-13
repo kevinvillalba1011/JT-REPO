@@ -9,6 +9,7 @@ import * as path from 'path';
 import { GeminiService } from '../../common/services/gemini.service';
 import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
+import { IntegrationService } from '../integration/integration.service';
 
 @Injectable()
 @Processor('cola_modelo', {
@@ -28,10 +29,11 @@ export class ModelProcessor extends WorkerHost {
     private readonly configService: ConfigService,
     private readonly clientService: ClientService,
     private readonly geminiService: GeminiService,
+    private readonly integrationService: IntegrationService,
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {
     super();
-    this.donePath = this.configService.get<string>('DONE_PATH', './local/done');
+    this.donePath = path.resolve(process.cwd(), this.configService.get<string>('DONE_PATH', './local/done'));
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
@@ -100,10 +102,10 @@ export class ModelProcessor extends WorkerHost {
 
       // Move file
       try {
-        fs.renameSync(filePath, doneFilePath);
+        await fs.promises.rename(filePath, doneFilePath);
       } catch (err) {
-        fs.copyFileSync(filePath, doneFilePath);
-        fs.unlinkSync(filePath);
+        await fs.promises.copyFile(filePath, doneFilePath);
+        await fs.promises.unlink(filePath);
       }
 
       // Update DB
@@ -114,6 +116,9 @@ export class ModelProcessor extends WorkerHost {
           jsonModel: resultJson,
         },
       );
+
+      // Integrate with external REST service
+      await this.integrationService.sendData(resultJson, 'IA_OK');
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(

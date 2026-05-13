@@ -30,8 +30,8 @@ export class ExtractionService implements OnApplicationBootstrap {
     @InjectQueue('cola_ocr') private readonly ocrQueue: Queue,
     @InjectQueue('cola_modelo') private readonly modelQueue: Queue,
   ) {
-    this.inPath = this.configService.get<string>('IN_PATH', './local/in');
-    this.ocrPath = this.configService.get<string>('OCR_PATH', './local/ocr');
+    this.inPath = path.resolve(process.cwd(), this.configService.get<string>('IN_PATH', './local/in'));
+    this.ocrPath = path.resolve(process.cwd(), this.configService.get<string>('OCR_PATH', './local/ocr'));
     this.redisClient = new Redis({
       host: this.configService.get<string>('REDIS_HOST', 'localhost'),
       port: this.configService.get<number>('REDIS_PORT', 6379),
@@ -140,7 +140,7 @@ export class ExtractionService implements OnApplicationBootstrap {
       await strategy.extractFiles(this.inPath);
 
       // 3. Process Files in IN_PATH
-      const files = fs.readdirSync(this.inPath);
+      const files = await fs.promises.readdir(this.inPath);
 
       for (const file of files) {
         if (file === '.lock' || file.startsWith('.')) continue;
@@ -161,19 +161,16 @@ export class ExtractionService implements OnApplicationBootstrap {
 
   private async processFile(filePath: string, fileName: string) {
     try {
-      const stats = fs.statSync(filePath);
+      const stats = await fs.promises.stat(filePath);
       const maxSizeMB = this.configService.get<number>('FILE_MAX_SIZE_MB', 20);
       if (stats.size > maxSizeMB * 1024 * 1024) {
         this.logger.warn(`File ${fileName} exceeds max size of ${maxSizeMB}MB. Deleting.`);
-        fs.unlinkSync(filePath);
+        await fs.promises.unlink(filePath);
         return;
       }
 
-      // Generate MD5
-      const fileBuffer = fs.readFileSync(filePath);
-      const hashSum = crypto.createHash('md5');
-      hashSum.update(fileBuffer);
-      const hex = hashSum.digest('hex');
+      // Generate MD5 using stream
+      const hex = await this.calculateFileHash(filePath);
 
       // Check DB
       const existingDoc = await this.documentRepository.findByHash(hex);
@@ -183,8 +180,12 @@ export class ExtractionService implements OnApplicationBootstrap {
           'DUPLICATES_PATH',
           './local/duplicates',
         );
-        if (!fs.existsSync(duplicatesPath))
-          fs.mkdirSync(duplicatesPath, { recursive: true });
+        
+        try {
+          await fs.promises.access(duplicatesPath);
+        } catch {
+          await fs.promises.mkdir(duplicatesPath, { recursive: true });
+        }
 
         const baseName = path.basename(filePath);
         const newFileName = `${Date.now()}_${baseName}`;
@@ -202,10 +203,10 @@ export class ExtractionService implements OnApplicationBootstrap {
         });
 
         try {
-          fs.renameSync(filePath, destination);
+          await fs.promises.rename(filePath, destination);
         } catch (err) {
-          fs.copyFileSync(filePath, destination);
-          fs.unlinkSync(filePath);
+          await fs.promises.copyFile(filePath, destination);
+          await fs.promises.unlink(filePath);
         }
         return;
       }
@@ -253,15 +254,19 @@ export class ExtractionService implements OnApplicationBootstrap {
     const pathsToClean = cleanAll ? [this.inPath, this.ocrPath, this.configService.get<string>('DONE_PATH', './local/done')] : [this.configService.get<string>('DONE_PATH', './local/done')];
 
     for (const folder of pathsToClean) {
-      if (!fs.existsSync(folder)) continue;
-      const files = fs.readdirSync(folder);
+      try {
+        await fs.promises.access(folder);
+      } catch {
+        continue;
+      }
+      const files = await fs.promises.readdir(folder);
       for (const file of files) {
         if (file === '.lock' || file === '.gitkeep') continue;
         const filePath = path.join(folder, file);
         try {
-          const stats = fs.statSync(filePath);
+          const stats = await fs.promises.stat(filePath);
           if (now - stats.mtimeMs > maxAgeMs) {
-            fs.unlinkSync(filePath);
+            await fs.promises.unlink(filePath);
             this.logger.log(`Cleaned up old file: ${filePath}`);
           }
         } catch (err) {
@@ -269,5 +274,15 @@ export class ExtractionService implements OnApplicationBootstrap {
         }
       }
     }
+  }
+
+  private async calculateFileHash(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const hash = crypto.createHash('md5');
+      const stream = fs.createReadStream(filePath);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', (err) => reject(err));
+    });
   }
 }

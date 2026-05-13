@@ -12,6 +12,7 @@ import { TextExtractorStrategy } from './strategies/text-extractor.strategy';
 import { DocumentAiStrategy } from './strategies/document-ai.strategy';
 import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
 import { MassiveExcelService } from './services/massive-excel.service';
+import { IntegrationService } from '../integration/integration.service';
 
 @Processor('cola_ocr', {
   concurrency: 5,
@@ -29,9 +30,10 @@ export class OcrProcessor extends WorkerHost {
     private readonly docAiStrategy: DocumentAiStrategy,
     private readonly excelStrategy: ExcelExtractorStrategy,
     private readonly massiveExcelService: MassiveExcelService,
+    private readonly integrationService: IntegrationService,
   ) {
     super();
-    this.ocrPath = this.configService.get<string>('OCR_PATH', './local/ocr');
+    this.ocrPath = path.resolve(process.cwd(), this.configService.get<string>('OCR_PATH', './local/ocr'));
     this.strategies = [this.docAiStrategy, this.excelStrategy];
   }
 
@@ -78,10 +80,10 @@ export class OcrProcessor extends WorkerHost {
         // Mover a la carpeta de procesados (OCR_PATH como indica tu flujo)
         const newFilePath = path.join(this.ocrPath, baseName);
         try {
-          fs.renameSync(filePath, newFilePath);
+          await fs.promises.rename(filePath, newFilePath);
         } catch (err) {
-          fs.copyFileSync(filePath, newFilePath);
-          fs.unlinkSync(filePath);
+          await fs.promises.copyFile(filePath, newFilePath);
+          await fs.promises.unlink(filePath);
         }
 
         await this.documentRepository.updateState(
@@ -92,6 +94,18 @@ export class OcrProcessor extends WorkerHost {
               'Archivo Excel masivo procesado correctamente (Bypass IA).',
           },
         );
+
+        // Integrate with external REST service for EXCEL_OK
+        await this.integrationService.sendData(
+          {
+            documentId,
+            fileName: baseName,
+            processedAt: new Date().toISOString(),
+            message: 'Carga masiva finalizada',
+          },
+          'EXCEL_OK',
+        );
+
         this.logger.log(
           `Carga masiva finalizada para ${baseName}. Estado: EXCEL_OK`,
         );
@@ -109,17 +123,21 @@ export class OcrProcessor extends WorkerHost {
           'UNSUPPORTED_PATH',
           './local/unsupported',
         );
-        if (!fs.existsSync(unsupportedPath))
-          fs.mkdirSync(unsupportedPath, { recursive: true });
+        
+        try {
+          await fs.promises.access(unsupportedPath);
+        } catch {
+          await fs.promises.mkdir(unsupportedPath, { recursive: true });
+        }
 
         const baseName = path.basename(filePath);
         const destination = path.join(unsupportedPath, baseName);
 
         try {
-          fs.renameSync(filePath, destination);
+          await fs.promises.rename(filePath, destination);
         } catch (err) {
-          fs.copyFileSync(filePath, destination);
-          fs.unlinkSync(filePath);
+          await fs.promises.copyFile(filePath, destination);
+          await fs.promises.unlink(filePath);
         }
 
         await this.documentRepository.updateState(
@@ -149,10 +167,10 @@ export class OcrProcessor extends WorkerHost {
       const newFilePath = path.join(this.ocrPath, baseName);
 
       try {
-        fs.renameSync(filePath, newFilePath);
+        await fs.promises.rename(filePath, newFilePath);
       } catch (err) {
-        fs.copyFileSync(filePath, newFilePath);
-        fs.unlinkSync(filePath);
+        await fs.promises.copyFile(filePath, newFilePath);
+        await fs.promises.unlink(filePath);
       }
 
       // Save to DB and Update State

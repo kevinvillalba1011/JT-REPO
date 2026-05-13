@@ -1,10 +1,19 @@
 import { NestFactory } from '@nestjs/core';
+import * as path from 'path';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
+  // Patch preventivo para asegurar rutas absolutas en credenciales GCP en local Windows
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = path.resolve(
+      process.cwd(),
+      process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    );
+  }
+
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);

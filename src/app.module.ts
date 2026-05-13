@@ -9,6 +9,7 @@ import { ModelModule } from './modules/model/model.module';
 import { ReportModule } from './modules/report/report.module';
 import { ClientModule } from './modules/client/client.module';
 import { TenantModule } from './modules/tenant/tenant.module';
+import { IntegrationModule } from './modules/integration/integration.module';
 import { FolderInitializerService } from './common/services/folder-initializer.service';
 
 import { validate } from './common/config/env.validation';
@@ -37,6 +38,7 @@ import { validate } from './common/config/env.validation';
     ReportModule,
     ClientModule,
     TenantModule,
+    IntegrationModule,
   ],
   providers: [FolderInitializerService],
 })

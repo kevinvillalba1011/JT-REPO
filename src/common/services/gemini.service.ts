@@ -85,7 +85,9 @@ export class GeminiService {
         this.logger.debug(
           `Gemini Result multi-modal [via ${modelId}]: ${generatedText.substring(0, 100)}...`,
         );
-        const resultJson = JSON.parse(generatedText);
+        // Limpieza defensiva de markdown ```json ... ``` si se cuela
+        const cleanedText = generatedText.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+        const resultJson = JSON.parse(cleanedText);
 
         // Reordenar las claves del JSON (Garantía de orden del Excel)
         const orderedJson = {};

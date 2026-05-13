@@ -204,6 +204,16 @@ Gestión remota conectada a flujos judiciales vivos. Requiere `GMAIL_USER` y `GM
 | `GEMINI_API_KEY`           | API Key provista por Google AI Studio            |
 | `DOCUMENT_AI_PROCESSOR_ID` | ID extraído de Google Document AI                |
 
+### 🔗 Integración Externa REST (Opcional)
+
+El sistema permite despachar automáticamente los resultados en tiempo real a una API REST externa una vez finalizado el procesamiento (`IA_OK` o `EXCEL_OK`). El servicio gestiona automáticamente la autenticación Bearer y la renovación de tokens.
+
+| Variable | Descripción |
+| :--- | :--- |
+| `INTEGRATION_AUTH_URL` | URL para obtener el Bearer token (POST) |
+| `INTEGRATION_AUTH_PAYLOAD` | JSON payload de credenciales |
+| `INTEGRATION_DATA_URL` | URL destino donde se envía el JSON procesado |
+
 ---
 
 ## 🔄 Pipeline de Estados & APIs

@@ -89,6 +89,7 @@ flowchart TD
 ## 🧠 Registro de Decisiones
 | Fecha | Decisión Técnica | Justificación / Contexto |
 | :--- | :--- | :--- |
+| 2026-05-12 | Integración REST Automatizada | Implementación de IntegrationService para dispatch de IA_OK / EXCEL_OK con Auth Bearer Token dinámica. |
 | 2026-03-31 | Creación de AGENTS.md | Estandarización de memoria maestra y eliminación de MEMORY.md (SSoT). |
 | 2026-03-18 | Patrón Strict JSON (Gemini) | Uso de Structured Outputs nativos para garantizar 100% consistencia en el parsing. |
 | 2026-03-18 | Redis Distributed Lock | Cambio de .lock en FS por Redis para escalabilidad horizontal en ExtractionService. |
@@ -98,6 +99,7 @@ flowchart TD
 | 2026-02-19 | Hash MD5 Deduplicación | Firma única de binario para evitar re-procesar archivos idénticos y ahorrar costos. |
 
 ## 🔄 Estado de Tareas
+- [x] Integrar conexión a servicios REST externos (IA_OK / EXCEL_OK).
 - [x] Migración de Memoria a AGENTS.md.
 - [ ] Implementar Bull Dashboard para monitoreo visual (Propuesta).
 - [ ] Separar GmailExtractionStrategy en módulo propio (Postergado).
