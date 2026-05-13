@@ -4,12 +4,13 @@ Este documento contiene las reglas mandatorias para cualquier agente de IA o des
 
 ## 🗄️ Database Management (Prisma)
 - **Schema First**: Todos los cambios de estructura deben iniciarse en `schema.prisma`.
-- **No Direct Migrations**: Está prohibido el uso de `npx prisma migrate dev` para entornos de producción.
-- **Manual SQL Flow**: 
-    1. Modificar `schema.prisma`.
-    2. Generar script SQL usando: `npx prisma migrate diff --from-schema-datamodel schema.prisma --to-schema-datamodel schema.prisma --script > migration.sql`.
-    3. Aplicar el SQL manualmente en la DB.
-    4. Ejecutar `npx prisma generate` para sincronizar el cliente.
+- **🚫 PROHIBIDO - Migraciones Directas**: Está TERMINANTEMENTE PROHIBIDO ejecutar comandos de migración automática como `npx prisma migrate dev`, `npx prisma migrate deploy`, o cualquier comando que aplique cambios directamente a la base de datos. Los agentes NO deben modificar la DB mediante migraciones automáticas bajo ninguna circunstancia.
+- **SQL Manual Flow**: 
+    1. Modificar `schema.prisma` con los cambios necesarios.
+    2. Generar el script SQL usando: `npx prisma migrate diff --from-schema-datamodel schema.prisma --to-schema-datamodel schema.prisma --script > migration.sql`.
+    3. **ENTREGAR el archivo SQL generado al usuario** para que lo revise y aplique manualmente en la DB.
+    4. Ejecutar `npx prisma generate` para sincronizar el cliente de Prisma.
+- **Nunca asumas permisos de escritura en la DB**: Siempre genera el SQL y pásalo al usuario para revisión y aplicación manual.
 
 ## 🛠️ Development Standards
 - **Linting**: Es obligatorio ejecutar `npm run lint` después de cualquier modificación de código. No se deben dejar errores de lint pendientes.

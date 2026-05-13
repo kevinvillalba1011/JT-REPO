@@ -33,7 +33,10 @@ export class ModelProcessor extends WorkerHost {
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {
     super();
-    this.donePath = path.resolve(process.cwd(), this.configService.get<string>('DONE_PATH', './local/done'));
+    this.donePath = path.resolve(
+      process.cwd(),
+      this.configService.get<string>('DONE_PATH', './local/done'),
+    );
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
@@ -54,7 +57,7 @@ export class ModelProcessor extends WorkerHost {
     }
 
     try {
-      let resultJson;
+      let resultJson: Record<string, unknown>;
 
       try {
         if (
@@ -77,7 +80,6 @@ export class ModelProcessor extends WorkerHost {
             this.logger.warn(
               `Ninguno de los implicados (${JSON.stringify(demandadoId)}) es un cliente. Recortando JSON por seguridad (Trimming) a ${this.profile.nonClientFields.length} campos.`,
             );
-            // Keep only non-client standard fields
             const trimmedJson = {};
             this.profile.nonClientFields.forEach((k) => {
               if (resultJson[k] !== undefined) trimmedJson[k] = resultJson[k];
@@ -108,12 +110,15 @@ export class ModelProcessor extends WorkerHost {
         await fs.promises.unlink(filePath);
       }
 
+      // Inject ruta_archivo (ruta original de lectura)
+      resultJson.ruta_archivo = filePath;
+
       // Update DB
       await this.documentRepository.updateState(
         documentId,
         DocumentState.IA_OK,
         {
-          jsonModel: resultJson,
+          jsonModel: resultJson as any,
         },
       );
 

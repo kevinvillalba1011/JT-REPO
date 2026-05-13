@@ -55,14 +55,20 @@ export class GeminiService {
 
     for (const modelId of this.fallbackChain) {
       try {
-        const timeoutMs = this.configService.get<number>('GEMINI_TIMEOUT_MS', 60000);
-        const model = this.genAI.getGenerativeModel({
-          model: modelId,
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: this.profile.responseSchema,
+        const timeoutMs = this.configService.get<number>(
+          'GEMINI_TIMEOUT_MS',
+          60000,
+        );
+        const model = this.genAI.getGenerativeModel(
+          {
+            model: modelId,
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: this.profile.responseSchema,
+            },
           },
-        }, { timeout: timeoutMs });
+          { timeout: timeoutMs },
+        );
 
         this.logger.log(
           `Intentando extracción de JSON con el modelo: ${modelId}...`,
@@ -86,20 +92,13 @@ export class GeminiService {
           `Gemini Result multi-modal [via ${modelId}]: ${generatedText.substring(0, 100)}...`,
         );
         // Limpieza defensiva de markdown ```json ... ``` si se cuela
-        const cleanedText = generatedText.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+        const cleanedText = generatedText
+          .replace(/^```(?:json)?/i, '')
+          .replace(/```$/i, '')
+          .trim();
         const resultJson = JSON.parse(cleanedText);
 
-        // Reordenar las claves del JSON (Garantía de orden del Excel)
-        const orderedJson = {};
-        this.profile.clientFields.forEach((key) => {
-          if (Object.prototype.hasOwnProperty.call(resultJson, key)) {
-            orderedJson[key] = resultJson[key];
-          } else {
-            orderedJson[key] = '';
-          }
-        });
-
-        return orderedJson;
+        return resultJson;
       } catch (err: unknown) {
         lastError = err instanceof Error ? err : new Error(String(err));
         const errMsg = err instanceof Error ? err.message : String(err);
