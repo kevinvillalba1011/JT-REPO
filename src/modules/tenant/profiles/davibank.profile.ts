@@ -95,11 +95,6 @@ export const DavibankProfile: TenantProfile = {
             description:
               'En DESEMBARGO, radicado del embargo original. Máximo 23 caracteres.',
           },
-          fechaHoraProcesamientoOficio: {
-            type: SchemaType.STRING,
-            description:
-              'Fecha y hora en la cual se procesa el documento. Formato: yyyy-mm-dd hh:mm',
-          },
           observaciones: {
             type: SchemaType.STRING,
             description:
@@ -236,11 +231,6 @@ export const DavibankProfile: TenantProfile = {
       infoCliente: {
         type: SchemaType.OBJECT,
         properties: {
-          fechaHoraRecepcionCorreo: {
-            type: SchemaType.STRING,
-            description:
-              'Fecha y hora en la que se recibió el documento o correo. Formato: yyyy-mm-dd hh:mm',
-          },
           tipoDocumentoRecibidoEmail: {
             type: SchemaType.ARRAY,
             items: { type: SchemaType.STRING },
@@ -314,7 +304,6 @@ export const DavibankProfile: TenantProfile = {
     - VALOR EMBARGO: Limpiar separadores, obtener solo el valor bruto numérico.
     - NÚMERO DE RADICADO: Solo números. Rellenar ceros a la izquierda si es corto. Máximo 23 caracteres. CRÍTICO: Si el texto cita una resolución anterior y luego define la resolución actual, el radicado es SIEMPRE la resolución actual.
     - CUENTAS ESPECÍFICAS: Limpiar guiones o espacios. Máximo 12 caracteres numéricos.
-    - FECHAS: Formato "YYYY-MM-DD" o "YYYY-MM-DD HH:mm".
     - TIPO ID: 1 solo carácter (C, N, E, T, P).
     - CORREOS ELECTRÓNICOS: Extraer todas las direcciones válidas que contengan @ como ARRAY.
     - NOMBRES: Demandados máximo 50 caracteres, demandantes máximo 25 caracteres, entes máximo 40 caracteres.

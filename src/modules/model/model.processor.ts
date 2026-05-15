@@ -113,6 +113,26 @@ export class ModelProcessor extends WorkerHost {
       // Inject ruta_archivo (ruta original de lectura)
       resultJson.ruta_archivo = filePath;
 
+      // Inyectar fechas manualmente en formato ISO 8601
+      const nowIso = new Date().toISOString();
+
+      if (!resultJson.oficio || typeof resultJson.oficio !== 'object') {
+        resultJson.oficio = {};
+      }
+      (
+        resultJson.oficio as Record<string, unknown>
+      ).fechaHoraProcesamientoOficio = nowIso;
+
+      if (
+        !resultJson.infoCliente ||
+        typeof resultJson.infoCliente !== 'object'
+      ) {
+        resultJson.infoCliente = {};
+      }
+      (
+        resultJson.infoCliente as Record<string, unknown>
+      ).fechaHoraRecepcionCorreo = nowIso;
+
       // Update DB
       await this.documentRepository.updateState(
         documentId,
