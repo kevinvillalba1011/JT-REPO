@@ -106,7 +106,7 @@ export class IntegrationService {
         `Sending JSON data to external service for source [${source}].`,
       );
 
-      console.log(
+      this.logger.log(
         `🚀 ~ IntegrationService ~ sendData ~ finalJson:`,
         dataUrl,
         finalJson,
