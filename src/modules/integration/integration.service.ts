@@ -107,9 +107,7 @@ export class IntegrationService {
       );
 
       this.logger.log(
-        `🚀 ~ IntegrationService ~ sendData ~ finalJson:`,
-        dataUrl,
-        finalJson,
+        `🚀 ~ IntegrationService ~ sendData ~ finalJson: ${dataUrl} ${JSON.stringify(finalJson)}`,
       );
       const response = await fetch(dataUrl, {
         method: 'POST',
