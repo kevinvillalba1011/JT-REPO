@@ -106,6 +106,11 @@ export class IntegrationService {
         `Sending JSON data to external service for source [${source}].`,
       );
 
+      console.log(
+        `🚀 ~ IntegrationService ~ sendData ~ finalJson:`,
+        dataUrl,
+        finalJson,
+      );
       const response = await fetch(dataUrl, {
         method: 'POST',
         headers: {
