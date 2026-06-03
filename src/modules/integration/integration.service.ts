@@ -117,7 +117,7 @@ export class IntegrationService {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(finalJson),
+        body: finalJson,
       });
 
       if (!response.ok) {
