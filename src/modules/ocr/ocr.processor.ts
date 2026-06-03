@@ -33,7 +33,10 @@ export class OcrProcessor extends WorkerHost {
     private readonly integrationService: IntegrationService,
   ) {
     super();
-    this.ocrPath = path.resolve(process.cwd(), this.configService.get<string>('OCR_PATH', './local/ocr'));
+    this.ocrPath = path.resolve(
+      process.cwd(),
+      this.configService.get<string>('OCR_PATH', './local/ocr'),
+    );
     this.strategies = [this.docAiStrategy, this.excelStrategy];
   }
 
@@ -123,7 +126,7 @@ export class OcrProcessor extends WorkerHost {
           'UNSUPPORTED_PATH',
           './local/unsupported',
         );
-        
+
         try {
           await fs.promises.access(unsupportedPath);
         } catch {

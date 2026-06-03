@@ -1,5 +1,11 @@
 import { plainToInstance } from 'class-transformer';
-import { validateSync, IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
+import {
+  validateSync,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+} from 'class-validator';
 
 export class EnvironmentVariables {
   @IsString()
@@ -40,17 +46,19 @@ export class EnvironmentVariables {
 }
 
 export function validate(config: Record<string, unknown>) {
-  const validatedConfig = plainToInstance(
-    EnvironmentVariables,
-    config,
-    { enableImplicitConversion: true },
-  );
-  
-  const errors = validateSync(validatedConfig, { skipMissingProperties: false });
+  const validatedConfig = plainToInstance(EnvironmentVariables, config, {
+    enableImplicitConversion: true,
+  });
+
+  const errors = validateSync(validatedConfig, {
+    skipMissingProperties: false,
+  });
 
   if (errors.length > 0) {
-    throw new Error(`Environment variables validation failed: ${errors.toString()}`);
+    throw new Error(
+      `Environment variables validation failed: ${errors.toString()}`,
+    );
   }
-  
+
   return validatedConfig;
 }

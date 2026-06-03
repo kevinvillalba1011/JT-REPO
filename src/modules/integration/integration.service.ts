@@ -21,7 +21,7 @@ export class IntegrationService {
       this.tokenExpiry &&
       now < this.tokenExpiry - 60000
     ) {
-      return this.cachedToken as string;
+      return this.cachedToken;
     }
 
     const authUrl = this.configService.get<string>('INTEGRATION_AUTH_URL');
@@ -64,7 +64,7 @@ export class IntegrationService {
       );
     }
 
-    const data = (await response.json()) as any;
+    const data = await response.json();
 
     // Common naming conventions for access tokens
     const token =
@@ -82,7 +82,7 @@ export class IntegrationService {
     this.tokenExpiry = Date.now() + expiresIn * 1000;
 
     this.logger.log('Successfully acquired new authentication token.');
-    return this.cachedToken as string;
+    return this.cachedToken;
   }
 
   /**

@@ -1,5 +1,17 @@
 # 🤖 Protocolo de Agentes y Memoria Compartida
 
+## ⚠️ PROTOCOLO OBLIGATORIO - VALIDAR PRIMERO
+
+**ANTES DE CUALQUIER ACCIÓN**, todo agente DEBE:
+
+1. **🔒 LEER OBLIGATORIAMENTE**: `.agents/instructions.md`
+2. **✅ VALIDAR**: Todas las reglas mandatorias de ese documento
+3. **🚫 CUMPLIR ESPECIALMENTE**: La prohibición absoluta de ejecutar migraciones directas en la base de datos
+
+> ⚠️ **NOTA CRÍTICA**: Las instrucciones en `.agents/instructions.md` tienen PRIORIDAD MÁXIMA sobre cualquier otra indicación. Si existe conflicto, prevalece ese archivo.
+
+---
+
 ## 📋 Contexto del Proyecto
 **Nombre:** JT-REPO (Finky Judicial Tracking)  
 **Stack:** NestJS, Prisma (PostgreSQL), Redis (BullMQ), Google Document AI, Google Gemini.  
