@@ -5,7 +5,6 @@ export const DavibankProfile: TenantProfile = {
   id: 'davibank',
   identifierKey: 'demandados.0.numeroId',
   clientFields: [
-    'oficio.tipoProceso',
     'oficio.tipoOficio',
     'oficio.nombreOficioInicial',
     'oficio.nombreOficioFinal',
@@ -17,12 +16,16 @@ export const DavibankProfile: TenantProfile = {
     'oficio.tipoRequerimiento',
     'oficio.tipoRequerimientoInembargable',
     'oficio.tipoLimiteInembargabilidad',
+    'oficio.rutaPdf',
+    'oficio.cuentaDepositoJudicial',
+    'oficio.nombreBancoDepositoJudicial',
     'demandados[0].tipoId',
     'demandados[0].numeroId',
     'demandados[0].nombre',
     'demandados[0].cuentas[0].productosAEmbargar',
     'demandados[0].cuentas[0].numeroCuentaEspecifica',
     'demandados[0].cuentas[0].productosAFuturo',
+    'demandados[0].tipoAplicacion',
     'demandados[0].porcentajeAEmbargar',
     'demandados[0].valorEmbargo',
     'demandantes[0].tipoId',
@@ -31,19 +34,17 @@ export const DavibankProfile: TenantProfile = {
     'ente.nombreSecretarioFuncionario',
     'ente.nombreEnteEmbargante',
     'ente.ciudad',
+    'ente.tipoProceso',
     'ente.correosElectronicos',
     'ente.linkColocacionRespuesta',
     'infoCliente.fechaHoraRecepcionCorreo',
     'infoCliente.tipoDocumentoRecibidoEmail',
     'infoCliente.codigoAlcance',
     'infoCliente.codigoAplicacion',
-    'infoCliente.tipoAplicacion',
     'infoCliente.tipoRespuesta',
     'infoCliente.vinculoCliente',
-    'ruta_archivo',
   ],
   nonClientFields: [
-    'oficio.tipoProceso',
     'oficio.tipoOficio',
     'oficio.nombreOficioInicial',
     'oficio.nombreOficioFinal',
@@ -54,6 +55,7 @@ export const DavibankProfile: TenantProfile = {
     'demandados[0].nombre',
     'ente.nombreEnteEmbargante',
     'ente.ciudad',
+    'ente.tipoProceso',
   ],
 
   responseSchema: {
@@ -62,11 +64,6 @@ export const DavibankProfile: TenantProfile = {
       oficio: {
         type: SchemaType.OBJECT,
         properties: {
-          tipoProceso: {
-            type: SchemaType.STRING,
-            description:
-              'Si dice JUZGADO es JUDICIAL, de lo contrario siempre COACTIVO.',
-          },
           tipoOficio: {
             type: SchemaType.STRING,
             description: 'EMBARGO, DESEMBARGO o ALCANCE O REQUERIMIENTO.',
@@ -116,8 +113,36 @@ export const DavibankProfile: TenantProfile = {
             description:
               'Texto del límite de inembargabilidad (Art. 837-1 ET, Decreto 379, Carta Circular SFC, etc.)',
           },
+          rutaPdf: {
+            type: SchemaType.STRING,
+            description: 'Ruta completa del archivo procesado en el sistema.',
+          },
+          cuentaDepositoJudicial: {
+            type: SchemaType.NUMBER,
+            description:
+              'Número de cuenta de depósito judicial detectada en el oficio.',
+          },
+          nombreBancoDepositoJudicial: {
+            type: SchemaType.STRING,
+            description:
+              'Nombre del banco para el depósito judicial (usualmente Banco Agrario).',
+          },
         },
-        required: ['tipoOficio', 'numeroRadicado'],
+        required: [
+          'tipoOficio',
+          'nombreOficioInicial',
+          'nombreOficioFinal',
+          'numeroRadicado',
+          'oficioEmbargoADesembargar',
+          'radicadoOficioADesembargar',
+          'observaciones',
+          'tipoRequerimiento',
+          'tipoRequerimientoInembargable',
+          'tipoLimiteInembargabilidad',
+          'rutaPdf',
+          'cuentaDepositoJudicial',
+          'nombreBancoDepositoJudicial',
+        ],
       },
       demandados: {
         type: SchemaType.ARRAY,
@@ -160,7 +185,17 @@ export const DavibankProfile: TenantProfile = {
                       'Indicar estrictamente "SI" o "NO" si el oficio menciona embargar productos futuros.',
                   },
                 },
+                required: [
+                  'productosAEmbargar',
+                  'numeroCuentaEspecifica',
+                  'productosAFuturo',
+                ],
               },
+            },
+            tipoAplicacion: {
+              type: SchemaType.STRING,
+              description:
+                'CONGELAR (Mantener, Bloquear) o DEBITAR (Consignar, Dejar a disposición).',
             },
             porcentajeAEmbargar: {
               type: SchemaType.STRING,
@@ -173,7 +208,15 @@ export const DavibankProfile: TenantProfile = {
                 'Valor o monto del embargo solicitado. Número entero sin puntos ni comas.',
             },
           },
-          required: ['tipoId', 'numeroId', 'nombre'],
+          required: [
+            'tipoId',
+            'numeroId',
+            'nombre',
+            'cuentas',
+            'tipoAplicacion',
+            'porcentajeAEmbargar',
+            'valorEmbargo',
+          ],
         },
       },
       demandantes: {
@@ -216,6 +259,11 @@ export const DavibankProfile: TenantProfile = {
             type: SchemaType.STRING,
             description: 'Ciudad en la cual se emite el documento u oficio.',
           },
+          tipoProceso: {
+            type: SchemaType.STRING,
+            description:
+              'Si dice JUZGADO es JUDICIAL, de lo contrario siempre COACTIVO (Ej: EJECUTIVO).',
+          },
           correosElectronicos: {
             type: SchemaType.ARRAY,
             items: { type: SchemaType.STRING },
@@ -228,6 +276,14 @@ export const DavibankProfile: TenantProfile = {
               'Link o dirección física en la cual se debe cargar o remitir la respuesta.',
           },
         },
+        required: [
+          'nombreSecretarioFuncionario',
+          'nombreEnteEmbargante',
+          'ciudad',
+          'tipoProceso',
+          'correosElectronicos',
+          'linkColocacionRespuesta',
+        ],
       },
       infoCliente: {
         type: SchemaType.OBJECT,
@@ -247,11 +303,6 @@ export const DavibankProfile: TenantProfile = {
             description:
               'Código de aplicación según listado del banco. Máximo 2 caracteres.',
           },
-          tipoAplicacion: {
-            type: SchemaType.STRING,
-            description:
-              'CONGELAR (Mantener, Bloquear) o DEBITAR (Consignar, Dejar a disposición).',
-          },
           tipoRespuesta: {
             type: SchemaType.STRING,
             format: 'enum',
@@ -265,11 +316,13 @@ export const DavibankProfile: TenantProfile = {
               'Vínculo del cliente con el proceso o relación con el demandado.',
           },
         },
-        required: ['tipoRespuesta'],
-      },
-      ruta_archivo: {
-        type: SchemaType.STRING,
-        description: 'Ruta completa del archivo procesado en el sistema.',
+        required: [
+          'tipoDocumentoRecibidoEmail',
+          'codigoAlcance',
+          'codigoAplicacion',
+          'tipoRespuesta',
+          'vinculoCliente',
+        ],
       },
     },
     required: ['oficio', 'demandados', 'demandantes', 'ente', 'infoCliente'],
@@ -283,16 +336,15 @@ export const DavibankProfile: TenantProfile = {
     --- ESTRUCTURA DEL JSON DE SALIDA ---
     El resultado DEBE ser un objeto JSON con estas secciones:
 
-    1. "oficio": Información general del proceso y del oficio actual.
+    1. "oficio": Información general del proceso y del oficio actual (debe incluir rutaPdf, cuentaDepositoJudicial, nombreBancoDepositoJudicial).
     2. "demandados": ARRAY de objetos, UNO POR CADA demandado encontrado en el documento.
-       Cada demandado debe tener: tipoId, numeroId, nombre, cuentas (ARRAY), porcentajeAEmbargar, valorEmbargo.
+       Cada demandado debe tener: tipoId, numeroId, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuentaEspecifica, productosAFuturo), tipoAplicacion, porcentajeAEmbargar, valorEmbargo.
        Si hay múltiples demandados, incluye todos en el array.
        Si no se especifican cuentas para un demandado, el array "cuentas" puede estar vacío [].
     3. "demandantes": ARRAY de objetos, UNO POR CADA demandante/accionante encontrado.
        Cada uno con: tipoId, numeroId, nombre.
-    4. "ente": Información del ente embargante (nombreSecretarioFuncionario, nombreEnteEmbargante, ciudad, correosElectronicos como ARRAY, linkColocacionRespuesta).
-    5. "infoCliente": Información del cliente (fechaHoraRecepcionCorreo, tipoDocumentoRecibidoEmail como ARRAY, codigoAlcance, codigoAplicacion, tipoAplicacion, tipoRespuesta, vinculoCliente).
-    6. "ruta_archivo": Ruta completa del archivo procesado.
+    4. "ente": Información del ente embargante (nombreSecretarioFuncionario, nombreEnteEmbargante, ciudad, correosElectronicos como ARRAY, linkColocacionRespuesta, tipoProceso).
+    5. "infoCliente": Información del cliente (fechaHoraRecepcionCorreo, tipoDocumentoRecibidoEmail como ARRAY, codigoAlcance, codigoAplicacion, tipoRespuesta, vinculoCliente).
 
     --- REGLAS DE ORO DE CLASIFICACIÓN ---
     Para determinar 'oficio.tipoOficio', utiliza estas señales semánticas:
@@ -301,18 +353,22 @@ export const DavibankProfile: TenantProfile = {
     3. ALCANCE O REQUERIMIENTO: Busca "reiterar oficio", "informar cumplimiento", "orden impartida", "traslado de títulos" o "poner a disposición".
 
     --- REGLAS ESTRICTAS DE EXTRACCIÓN Y LIMPIEZA ---
+    - TIPO PROCESO: Identificar si es "JUDICIAL", "COACTIVO" o "EJECUTIVO". Ubicarlo exclusivamente en "ente.tipoProceso". No debe ir en "oficio.tipoProceso".
+    - VALORES POR DEFECTO O FALLBACK (OBLIGATORIO): Si cualquier campo de tipo texto o número (ej. observaciones, valorEmbargo, porcentajeAEmbargar, vinculoCliente, codigoAlcance, codigoAplicacion, oficioEmbargoADesembargar, etc.) no es encontrado, no aplica, o está vacío en el documento, se debe rellenar estrictamente con "0" (como string o número 0 según el tipo). NO uses null ni strings vacíos (""). Los arrays vacíos que no tengan elementos detectados se deben retornar como [] (arreglos vacíos normales).
     - NÚMEROS DE IDENTIFICACIÓN: Remover formato. Extraer exclusivamente dígitos. Truncar si supera 12 caracteres.
-    - VALOR EMBARGO: Limpiar separadores, obtener solo el valor bruto numérico.
+    - VALOR EMBARGO: Limpiar separadores, obtener solo el valor bruto numérico. Si no se encuentra, retornar el número 0.
     - NÚMERO DE RADICADO: Solo números. Rellenar ceros a la izquierda si es corto. Máximo 23 caracteres. CRÍTICO: Si el texto cita una resolución anterior y luego define la resolución actual, el radicado es SIEMPRE la resolución actual.
-    - RADICADO OFICIO A DESEMBARGAR: En desembargos, extraer exclusivamente dígitos de la resolución, expediente, radicado o proceso original. Máximo 23 caracteres, sin puntos ni comas.
-    - TIPO REQUERIMIENTO: Identificar si requiere atención diferente y clasificar en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR.
-    - CUENTAS ESPECÍFICAS: Limpiar guiones o espacios. Máximo 12 caracteres numéricos.
-    - PRODUCTOS A FUTURO: Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO".
+    - RADICADO OFICIO A DESEMBARGAR: En desembargos, extraer exclusivamente dígitos de la resolución, expediente, radicado o proceso original. Máximo 23 caracteres, sin puntos ni comas. Si no hay, usar "0".
+    - TIPO REQUERIMIENTO: Identificar si requiere atención diferente y clasificar en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR. Si no hay, usar "0".
+    - CUENTAS ESPECÍFICAS: Limpiar guiones o espacios. Máximo 12 caracteres numéricos. Si no se encuentra cuenta específica, usar "0".
+    - CUENTA DEPOSITO JUDICIAL: Extraer la cuenta de depósito judicial (suele estar asociada a la frase "depósito judicial"). Debe ser numérica, de máximo 12 caracteres. Si no se encuentra, retornar el número 0.
+    - NOMBRE BANCO DEPOSITO JUDICIAL: Extraer el nombre de la entidad bancaria asignada para los depósitos judiciales si se menciona (ej. "BANCO AGRARIO..."). Debe ser alfanumérico, de máximo 40 caracteres, y siempre en MAYÚSCULAS. Si no se encuentra, retornar "0".
+    - PRODUCTOS A FUTURO: Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO" (o "0" si no se menciona en absoluto).
     - TIPO DOCUMENTO RECIBIDO EMAIL: Clasificar el tipo de documento o correo dentro de las opciones permitidas: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
     - TIPO ID: 1 solo carácter (C, N, E, T, P).
-    - CORREOS ELECTRÓNICOS: Extraer todas las direcciones válidas que contengan @ como ARRAY.
+    - CORREOS ELECTRÓNICOS: Extraer todas las direcciones válidas que contengan @ como ARRAY. Si no hay, retornar [].
     - NOMBRES: Demandados máximo 50 caracteres, demandantes máximo 25 caracteres, entes máximo 40 caracteres.
-    - PORCENTAJE: Solo el número, sin signo %.
+    - PORCENTAJE: Solo el número, sin signo %. Si no hay, usar "0".
     - TIPO RESPUESTA: Priorizar "Email" si existe un correo en el texto o si no se especifica método físico/link.
     - DESEMBARGOS: No extraigas valores de embargo ni cuentas si el documento es un levantamiento de medida.
 
