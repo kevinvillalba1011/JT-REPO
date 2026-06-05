@@ -348,9 +348,9 @@ export const DavibankProfile: TenantProfile = {
 
     --- REGLAS DE ORO DE CLASIFICACIÓN ---
     Para determinar 'oficio.tipoOficio', utiliza estas señales semánticas:
-    1. EMBARGO: Busca "decretar el embargo", "limitarse a la suma", "remante", o "perfeccionamiento".
-    2. DESEMBARGO: Prioridad alta. Busca "cancelar el embargo", "levántese la medida", "terminación de proceso" o "dejar sin efectos".
-    3. ALCANCE O REQUERIMIENTO: Busca "reiterar oficio", "informar cumplimiento", "orden impartida", "traslado de títulos" o "poner a disposición".
+    1. EMBARGO: Busca "EMBARGO", "SECUESTRO", "BLOQUEO", "RETENCIÓN", "MEDIDA CAUTELAR", o "LIBRAR MANDAMIENTO DE PAGO".
+    2. DESEMBARGO: Prioridad alta. Busca "DESEMBARGO", "LEVANTAMIENTO", "DEJAR SIN EFECTO", "LIBERACIÓN", "CANCELACIÓN", o "SUSPENDER".
+    3. ALCANCE O REQUERIMIENTO: Busca "REITERACIÓN", "REQUERIR", "MANTENIMIENTO", "OFICIAR", "INCIDENTE", "SANCIÓN", "DESACATO", "NOTIFICAR", o "AMPLIAR".
 
     --- REGLAS ESTRICTAS DE EXTRACCIÓN Y LIMPIEZA ---
     - TIPO PROCESO: Identificar si es "JUDICIAL", "COACTIVO" o "EJECUTIVO". Ubicarlo exclusivamente en "ente.tipoProceso". No debe ir en "oficio.tipoProceso".
@@ -365,7 +365,7 @@ export const DavibankProfile: TenantProfile = {
     - NOMBRE BANCO DEPOSITO JUDICIAL: Extraer el nombre de la entidad bancaria asignada para los depósitos judiciales si se menciona (ej. "BANCO AGRARIO..."). Debe ser alfanumérico, de máximo 40 caracteres, y siempre en MAYÚSCULAS. Si no se encuentra, retornar "0".
     - PRODUCTOS A FUTURO: Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO" (o "0" si no se menciona en absoluto).
     - TIPO DOCUMENTO RECIBIDO EMAIL: Clasificar el tipo de documento o correo dentro de las opciones permitidas: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
-    - TIPO ID: 1 solo carácter (C, N, E, T, P).
+    - TIPO ID: 1 solo carácter. Si dice CC o Cédula de Ciudadanía usa "C", si dice NIT usa "N", si dice TI usa "T", si dice E usa "E", si dice P usa "P".
     - CORREOS ELECTRÓNICOS: Extraer todas las direcciones válidas que contengan @ como ARRAY. Si no hay, retornar [].
     - NOMBRES: Demandados máximo 50 caracteres, demandantes máximo 25 caracteres, entes máximo 40 caracteres.
     - PORCENTAJE: Solo el número, sin signo %. Si no hay, usar "0".
