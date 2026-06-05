@@ -143,7 +143,7 @@ export class ExtractionService implements OnApplicationBootstrap {
       // Strategy should move files to IN_PATH
       // But LocalStrategy moved them to destinationFolder which IS IN_PATH?
       // Yes, we pass IN_PATH to strategy.
-      await strategy.extractFiles(this.inPath);
+      const extractedFiles = await strategy.extractFiles(this.inPath);
 
       // 3. Process Files in IN_PATH
       const files = await fs.promises.readdir(this.inPath);
@@ -152,7 +152,9 @@ export class ExtractionService implements OnApplicationBootstrap {
         if (file === '.lock' || file.startsWith('.')) continue;
 
         const filePath = path.join(this.inPath, file);
-        await this.processFile(filePath, file);
+        const matchedFile = extractedFiles.find((ef) => ef.name === file);
+        const originalPath = matchedFile ? matchedFile.originalPath : filePath;
+        await this.processFile(filePath, file, originalPath);
       }
     } catch (error: any) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -165,7 +167,11 @@ export class ExtractionService implements OnApplicationBootstrap {
     }
   }
 
-  private async processFile(filePath: string, fileName: string) {
+  private async processFile(
+    filePath: string,
+    fileName: string,
+    originalPath: string,
+  ) {
     try {
       const stats = await fs.promises.stat(filePath);
       const maxSizeMB = this.configService.get<number>('FILE_MAX_SIZE_MB', 20);
@@ -236,6 +242,7 @@ export class ExtractionService implements OnApplicationBootstrap {
         {
           documentId: newDoc.id,
           filePath: filePath, // Should we leave it in TMP_IN? Yes, until OCR moves it.
+          originalPath: originalPath,
         },
         {
           attempts: 3,

@@ -40,7 +40,7 @@ export class ModelProcessor extends WorkerHost {
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
-    const { documentId, filePath, text } = job.data;
+    const { documentId, filePath, text, originalPath } = job.data;
     this.logger.log(
       `Processing Model Job ${job.id} for Document ${documentId}`,
     );
@@ -111,7 +111,7 @@ export class ModelProcessor extends WorkerHost {
       }
 
       // Inject ruta_archivo (ruta original de lectura)
-      resultJson.ruta_archivo = filePath;
+      resultJson.ruta_archivo = originalPath || filePath;
 
       // Inyectar fechas manualmente en formato ISO 8601
       const nowIso = new Date().toISOString();

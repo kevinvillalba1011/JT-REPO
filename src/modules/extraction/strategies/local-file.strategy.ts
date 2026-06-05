@@ -12,7 +12,6 @@ import { DocumentRepository } from '../../documents/repositories/document.reposi
 export class LocalFileStrategy implements FileExtractorStrategy {
   private readonly logger = new Logger(LocalFileStrategy.name);
   private readonly sourcePaths: string[];
-  private readonly processedFiles = new Set<string>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -85,10 +84,6 @@ export class LocalFileStrategy implements FileExtractorStrategy {
         continue;
       }
 
-      const stat = fs.statSync(fullPath);
-      const fileKey = `${fullPath}_${stat.mtimeMs}`;
-      if (this.processedFiles.has(fileKey)) continue;
-
       // Check DB to avoid copying if it already exists
       const existingDoc = await this.documentRepository.findByFileName(
         file.name,
@@ -97,7 +92,6 @@ export class LocalFileStrategy implements FileExtractorStrategy {
         this.logger.debug(
           `File ${file.name} already exists in DB. Skipping copy.`,
         );
-        this.processedFiles.add(fileKey);
         continue;
       }
 
@@ -107,7 +101,6 @@ export class LocalFileStrategy implements FileExtractorStrategy {
 
       try {
         fs.copyFileSync(fullPath, destinationPath);
-        this.processedFiles.add(fileKey);
         this.logger.log(
           `Copied file ${fullPath} to ${destinationFolder} as ${uniqueName}`,
         );

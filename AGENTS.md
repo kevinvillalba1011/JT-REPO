@@ -13,11 +13,13 @@
 ---
 
 ## 📋 Contexto del Proyecto
-**Nombre:** JT-REPO (Finky Judicial Tracking)  
+
+**Nombre:** JT-REPO
 **Stack:** NestJS, Prisma (PostgreSQL), Redis (BullMQ), Google Document AI, Google Gemini.  
 **Objetivo:** Automatizar el procesamiento de documentos judiciales mediante OCR avanzado e Inteligencia Artificial generativa para extraer datos estructurados (34 campos) con soporte multitenant.
 
 ## 📂 Estructura del Proyecto
+
 - `src/`: Código fuente NestJS.
   - `modules/`: Lógica de negocio (Extraction, Pipeline, Gemini, Reports, etc.).
   - `common/`: Servicios transversales e inicializadores.
@@ -29,6 +31,7 @@
 ## 🏛 Arquitectura y Flujos
 
 ### 🧩 Diagrama de Arquitectura (Container Level)
+
 Este diagrama muestra la interacción entre los módulos de NestJS, la persistencia y los servicios externos de IA.
 
 ```mermaid
@@ -65,6 +68,7 @@ graph TB
 ```
 
 ### 📋 Flujo de Procesamiento (Modo FTP)
+
 Representación visual del ciclo de vida de un documento judicial.
 
 ```mermaid
@@ -85,11 +89,13 @@ flowchart TD
 ```
 
 ## 🛠 Patrones de Diseño y Convenciones
+
 - **Nomenclatura:** `snake_case` para DB, `camelCase` para código TS (vía `@map` en Prisma).
 - **IA:** Structured Outputs nativos de Gemini (MIME application/json).
 - **Resiliencia:** Backoff exponencial y Pattern Fallback Multi-Modelo.
 
 ## ⚙️ Capacidades y Herramientas (Skills)
+
 - **backend-architect:** Evolución de patrones de diseño.
 - **gemini-api-dev:** Optimización de prompts y cuotas.
 - **lint-and-validate:** Calidad en cada commit.
@@ -99,8 +105,12 @@ flowchart TD
 - **c4-container:** Documentación arquitectura técnica.
 
 ## 🧠 Registro de Decisiones
+
 | Fecha | Decisión Técnica | Justificación / Contexto |
 | :--- | :--- | :--- |
+| 2026-06-04 | Deduplicación estricta contra DB | Se eliminó el Set en memoria (`processedFiles`) en `LocalFileStrategy` para forzar la validación de archivos procesados únicamente contra la base de datos. |
+| 2026-06-04 | Extracción de ruta original (`ruta_archivo`) | Propagación de `originalPath` desde las estrategias de extracción a través de BullMQ para inyectar la ruta de origen real en el JSON final. |
+| 2026-06-04 | Ajuste esquema extracción Davibank | Actualización de tipos y reglas de prompt en `DavibankProfile` para campos específicos (requerimientos, desembargos, etc.). |
 | 2026-05-12 | Integración REST Automatizada | Implementación de IntegrationService para dispatch de IA_OK / EXCEL_OK con Auth Bearer Token dinámica. |
 | 2026-03-31 | Creación de AGENTS.md | Estandarización de memoria maestra y eliminación de MEMORY.md (SSoT). |
 | 2026-03-18 | Patrón Strict JSON (Gemini) | Uso de Structured Outputs nativos para garantizar 100% consistencia en el parsing. |
@@ -111,6 +121,7 @@ flowchart TD
 | 2026-02-19 | Hash MD5 Deduplicación | Firma única de binario para evitar re-procesar archivos idénticos y ahorrar costos. |
 
 ## 🔄 Estado de Tareas
+
 - [x] Integrar conexión a servicios REST externos (IA_OK / EXCEL_OK).
 - [x] Migración de Memoria a AGENTS.md.
 - [ ] Implementar Bull Dashboard para monitoreo visual (Propuesta).

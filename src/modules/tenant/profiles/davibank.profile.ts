@@ -64,7 +64,8 @@ export const DavibankProfile: TenantProfile = {
         properties: {
           tipoProceso: {
             type: SchemaType.STRING,
-            description: 'JUDICIAL o COACTIVO.',
+            description:
+              'Si dice JUZGADO es JUDICIAL, de lo contrario siempre COACTIVO.',
           },
           tipoOficio: {
             type: SchemaType.STRING,
@@ -93,7 +94,7 @@ export const DavibankProfile: TenantProfile = {
           radicadoOficioADesembargar: {
             type: SchemaType.STRING,
             description:
-              'En DESEMBARGO, radicado del embargo original. Máximo 23 caracteres.',
+              'En DESEMBARGO, radicado del embargo original. Debe ser numérico, de máximo 23 caracteres, sin puntos ni comas.',
           },
           observaciones: {
             type: SchemaType.STRING,
@@ -103,7 +104,7 @@ export const DavibankProfile: TenantProfile = {
           tipoRequerimiento: {
             type: SchemaType.STRING,
             description:
-              'ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, etc.',
+              'Clasificación del requerimiento: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR.',
           },
           tipoRequerimientoInembargable: {
             type: SchemaType.STRING,
@@ -156,7 +157,7 @@ export const DavibankProfile: TenantProfile = {
                   productosAFuturo: {
                     type: SchemaType.STRING,
                     description:
-                      'SI o NO si el oficio menciona embargar productos futuros.',
+                      'Indicar estrictamente "SI" o "NO" si el oficio menciona embargar productos futuros.',
                   },
                 },
               },
@@ -235,7 +236,7 @@ export const DavibankProfile: TenantProfile = {
             type: SchemaType.ARRAY,
             items: { type: SchemaType.STRING },
             description:
-              'Clasificación: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, TUTELA, etc.',
+              'Clasificación del correo/documento recibido. Valores posibles: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.',
           },
           codigoAlcance: {
             type: SchemaType.STRING,
@@ -303,7 +304,11 @@ export const DavibankProfile: TenantProfile = {
     - NÚMEROS DE IDENTIFICACIÓN: Remover formato. Extraer exclusivamente dígitos. Truncar si supera 12 caracteres.
     - VALOR EMBARGO: Limpiar separadores, obtener solo el valor bruto numérico.
     - NÚMERO DE RADICADO: Solo números. Rellenar ceros a la izquierda si es corto. Máximo 23 caracteres. CRÍTICO: Si el texto cita una resolución anterior y luego define la resolución actual, el radicado es SIEMPRE la resolución actual.
+    - RADICADO OFICIO A DESEMBARGAR: En desembargos, extraer exclusivamente dígitos de la resolución, expediente, radicado o proceso original. Máximo 23 caracteres, sin puntos ni comas.
+    - TIPO REQUERIMIENTO: Identificar si requiere atención diferente y clasificar en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR.
     - CUENTAS ESPECÍFICAS: Limpiar guiones o espacios. Máximo 12 caracteres numéricos.
+    - PRODUCTOS A FUTURO: Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO".
+    - TIPO DOCUMENTO RECIBIDO EMAIL: Clasificar el tipo de documento o correo dentro de las opciones permitidas: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
     - TIPO ID: 1 solo carácter (C, N, E, T, P).
     - CORREOS ELECTRÓNICOS: Extraer todas las direcciones válidas que contengan @ como ARRAY.
     - NOMBRES: Demandados máximo 50 caracteres, demandantes máximo 25 caracteres, entes máximo 40 caracteres.
