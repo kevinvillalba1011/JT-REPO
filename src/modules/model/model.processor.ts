@@ -123,18 +123,22 @@ export class ModelProcessor extends WorkerHost {
         resultJson.oficio as Record<string, unknown>
       ).fechaHoraProcesamientoOficio = nowIso;
 
-      // Post-procesar nombreArchivo: reemplazar placeholder con fecha proceso + consecutivo
-      const nombreArchivo = (resultJson.oficio as Record<string, unknown>)
-        .nombreArchivo;
-      if (typeof nombreArchivo === 'string' && nombreArchivo.includes('00000000')) {
+      // Inyectar nombreOficioInicial desde el nombre del archivo PDF
+      const nombreOficioInicial = path.basename(filePath, path.extname(filePath));
+      (resultJson.oficio as Record<string, unknown>).nombreOficioInicial =
+        nombreOficioInicial;
+
+      // Post-procesar nombreOficioFinal: reemplazar placeholder "00000000" con fecha proceso + consecutivo
+      const nombreOficioFinal = (resultJson.oficio as Record<string, unknown>).nombreOficioFinal;
+      if (typeof nombreOficioFinal === 'string' && nombreOficioFinal.includes('00000000')) {
         const mmdd = String(now.getMonth() + 1).padStart(2, '0') +
           String(now.getDate()).padStart(2, '0');
 
         const docsToday = await this.documentRepository.countProcessedToday();
         const consecutivo = String(docsToday + 1).padStart(4, '0');
 
-        (resultJson.oficio as Record<string, unknown>).nombreArchivo =
-          nombreArchivo.replace('00000000', `${mmdd}${consecutivo}`);
+        (resultJson.oficio as Record<string, unknown>).nombreOficioFinal =
+          nombreOficioFinal.replace('00000000', `${mmdd}${consecutivo}`);
       }
 
       if (
