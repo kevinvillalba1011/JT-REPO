@@ -19,6 +19,7 @@ export const DavibankProfile: TenantProfile = {
     'oficio.rutaPdf',
     'oficio.cuentaDepositoJudicial',
     'oficio.nombreBancoDepositoJudicial',
+    'oficio.nombreArchivo',
     'demandados[0].tipoId',
     'demandados[0].numeroId',
     'demandados[0].nombre',
@@ -127,6 +128,11 @@ export const DavibankProfile: TenantProfile = {
             description:
               'Nombre del banco para el depósito judicial (usualmente Banco Agrario).',
           },
+          nombreArchivo: {
+            type: SchemaType.STRING,
+            description:
+              'Nombre construido del archivo. Estructura: {numeroOficio} DEL {fechaOficioDDMMAA} {procesoMMDD}{consecutivo4Digitos}. Ejemplo: 20250232006224 DEL 241125 25110186. El numeroOficio se extrae del documento (máximo 23 dígitos). La fechaOficio es la fecha del oficio en formato DDMMAA. Los últimos 8 caracteres (procesoMMDD + consecutivo) se completan en post-procesamiento con "00000000" como placeholder.',
+          },
         },
         required: [
           'tipoOficio',
@@ -142,6 +148,7 @@ export const DavibankProfile: TenantProfile = {
           'rutaPdf',
           'cuentaDepositoJudicial',
           'nombreBancoDepositoJudicial',
+          'nombreArchivo',
         ],
       },
       demandados: {
@@ -336,7 +343,7 @@ export const DavibankProfile: TenantProfile = {
     --- ESTRUCTURA DEL JSON DE SALIDA ---
     El resultado DEBE ser un objeto JSON con estas secciones:
 
-    1. "oficio": Información general del proceso y del oficio actual (debe incluir rutaPdf, cuentaDepositoJudicial, nombreBancoDepositoJudicial).
+     1. "oficio": Información general del proceso y del oficio actual (debe incluir rutaPdf, cuentaDepositoJudicial, nombreBancoDepositoJudicial, nombreArchivo).
     2. "demandados": ARRAY de objetos, UNO POR CADA demandado encontrado en el documento.
        Cada demandado debe tener: tipoId, numeroId, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuentaEspecifica, productosAFuturo), tipoAplicacion, porcentajeAEmbargar, valorEmbargo.
        Si hay múltiples demandados, incluye todos en el array.
@@ -371,6 +378,7 @@ export const DavibankProfile: TenantProfile = {
     - PORCENTAJE: Solo el número, sin signo %. Si no hay, usar "0".
     - TIPO RESPUESTA: Priorizar "Email" si existe un correo en el texto o si no se especifica método físico/link.
     - DESEMBARGOS: No extraigas valores de embargo ni cuentas si el documento es un levantamiento de medida.
+    - NOMBRE ARCHIVO (nombreArchivo): Construir con la siguiente estructura estricta: "{numeroOficio} DEL {fechaOficioDDMMAA} 00000000". Extraer el número de oficio o acto administrativo del documento (máximo 23 dígitos, solo números). Extraer la fecha del oficio o documento y formatearla como DDMMAA (6 dígitos). Los últimos 8 caracteres se completan como "00000000" (placeholder para post-procesamiento). Ejemplo: "20250232006224 DEL 241125 00000000". Si no se encuentra número de oficio, usar "0". Si no se encuentra fecha, usar "000000".
 
     --- ESTRUCTURA DE TEXTO A PROCESAR (DESDE OCR) ---
     {{text}}

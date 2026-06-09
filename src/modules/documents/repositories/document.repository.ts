@@ -115,6 +115,17 @@ export class DocumentRepository {
     return { data, total };
   }
 
+  async countProcessedToday(): Promise<number> {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    return this.prisma.document.count({
+      where: {
+        state: DocumentState.IA_OK,
+        createdAt: { gte: startOfDay },
+      },
+    });
+  }
+
   async getMetrics() {
     const groups = await this.prisma.document.groupBy({
       by: ['state'],
