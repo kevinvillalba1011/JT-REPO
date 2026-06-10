@@ -22,7 +22,7 @@ import { IntegrationService } from '../integration/integration.service';
 })
 export class ModelProcessor extends WorkerHost {
   private readonly logger = new Logger(ModelProcessor.name);
-  private readonly donePath: string;
+  private readonly ocrDestinationPath: string;
 
   constructor(
     private readonly documentRepository: DocumentRepository,
@@ -33,9 +33,12 @@ export class ModelProcessor extends WorkerHost {
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {
     super();
-    this.donePath = path.resolve(
+    this.ocrDestinationPath = path.resolve(
       process.cwd(),
-      this.configService.get<string>('DONE_PATH', './local/done'),
+      this.configService.get<string>(
+        'OCR_DESTINATION_PATH',
+        './local/ocr-done',
+      ),
     );
   }
 
@@ -100,7 +103,7 @@ export class ModelProcessor extends WorkerHost {
       );
 
       const fileName = path.basename(filePath);
-      const doneFilePath = path.join(this.donePath, fileName);
+      const doneFilePath = path.join(this.ocrDestinationPath, fileName);
 
       // Move file
       try {
@@ -108,6 +111,18 @@ export class ModelProcessor extends WorkerHost {
       } catch (err) {
         await fs.promises.copyFile(filePath, doneFilePath);
         await fs.promises.unlink(filePath);
+      }
+
+      // Remove the original source file so it doesn't remain duplicated
+      // alongside the copy now living in OCR_DESTINATION_PATH
+      if (originalPath && originalPath !== filePath) {
+        try {
+          await fs.promises.unlink(originalPath);
+        } catch (err: any) {
+          this.logger.warn(
+            `Could not remove original source file ${originalPath}: ${err.message}`,
+          );
+        }
       }
 
       // Inyectar fechas manualmente en formato ISO 8601
@@ -124,14 +139,22 @@ export class ModelProcessor extends WorkerHost {
       ).fechaHoraProcesamientoOficio = nowIso;
 
       // Inyectar nombreOficioInicial desde el nombre del archivo PDF
-      const nombreOficioInicial = path.basename(filePath, path.extname(filePath));
+      const nombreOficioInicial = path.basename(
+        filePath,
+        path.extname(filePath),
+      );
       (resultJson.oficio as Record<string, unknown>).nombreOficioInicial =
         nombreOficioInicial;
 
       // Post-procesar nombreOficioFinal: reemplazar placeholder "00000000" con fecha proceso + consecutivo
-      const nombreOficioFinal = (resultJson.oficio as Record<string, unknown>).nombreOficioFinal;
-      if (typeof nombreOficioFinal === 'string' && nombreOficioFinal.includes('00000000')) {
-        const mmdd = String(now.getMonth() + 1).padStart(2, '0') +
+      const nombreOficioFinal = (resultJson.oficio as Record<string, unknown>)
+        .nombreOficioFinal;
+      if (
+        typeof nombreOficioFinal === 'string' &&
+        nombreOficioFinal.includes('00000000')
+      ) {
+        const mmdd =
+          String(now.getMonth() + 1).padStart(2, '0') +
           String(now.getDate()).padStart(2, '0');
 
         const docsToday = await this.documentRepository.countProcessedToday();

@@ -43,7 +43,8 @@ services:
       # System Internal Paths
       - IN_PATH=/app/local/in
       - OCR_PATH=/app/local/ocr
-      - DONE_PATH=/app/local/done
+      - EXCEL_DESTINATION_PATH=/app/local/excel-done
+      - OCR_DESTINATION_PATH=/app/local/ocr-done
       # GCP & Gemini
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - GCP_LOCATION=${GCP_LOCATION}

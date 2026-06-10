@@ -43,6 +43,26 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   INTEGRATION_DATA_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  INTEGRATION_BATCH_START_URL?: string;
+
+  @IsNumber()
+  @IsOptional()
+  INTEGRATION_BATCH_CONCURRENCY?: number;
+
+  @IsNumber()
+  @IsOptional()
+  INTEGRATION_LOTE_SIZE?: number;
+
+  @IsString()
+  @IsOptional()
+  EXCEL_DESTINATION_PATH?: string;
+
+  @IsString()
+  @IsOptional()
+  OCR_DESTINATION_PATH?: string;
 }
 
 export function validate(config: Record<string, unknown>) {

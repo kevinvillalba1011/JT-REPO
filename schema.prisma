@@ -30,7 +30,7 @@ enum DocumentState {
 model Document {
   id        String        @id @default(uuid())
   fileName  String        @map("nombre_archivo")
-  md5Hash   String        @map("hash_md5")
+  md5Hash   String?       @map("hash_md5")
   state     DocumentState @map("estado")
   ocrText   String?       @map("texto_ocr") @db.Text
   jsonModel Json?         @map("json_modelo")
@@ -59,19 +59,14 @@ model DocumentStateLog {
 }
 
 model ExcelRecord {
-  id          String   @id @default(uuid())
-  excelName   String   @map("nombre_excel")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  excelName  String   @map("nombre_excel")
+  tipoOficio String   @map("tipo_oficio")
+  numeroFila Int      @map("numero_fila")
+  payload    Json     @map("payload")
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  consecutivo Int?     @map("consecutivo")
-  nroOficio   String?  @map("nro_oficio")
-  resolucion1 String?  @map("resolucion1") @db.Text
-  resolucion2 String?  @map("resolucion2") @db.Text
-  resolucion3 String?  @map("resolucion3") @db.Text
-  resolucion4 String?  @map("resolucion4") @db.Text
-  idDemandado String?  @map("id_demandado")
-  nombre      String?  @map("nombre")
-
-  @@index([idDemandado])
+  @@index([excelName])
+  @@index([tipoOficio])
   @@map("excel_records")
 }

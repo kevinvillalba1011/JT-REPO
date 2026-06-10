@@ -22,12 +22,22 @@ export class FolderInitializerService implements OnApplicationBootstrap {
       ),
       path.resolve(
         process.cwd(),
-        this.configService.get<string>('DONE_PATH', './local/done'),
+        this.configService.get<string>(
+          'EXCEL_DESTINATION_PATH',
+          './local/excel-done',
+        ),
+      ),
+      path.resolve(
+        process.cwd(),
+        this.configService.get<string>(
+          'OCR_DESTINATION_PATH',
+          './local/ocr-done',
+        ),
       ),
 
-      // Mode-specific Local Paths
+      // Local source/data paths
       ...this.configService
-        .get<string>('LOCAL_SOURCE_PATHS', './local/ftp')
+        .get<string>('LOCAL_SOURCE_PATHS', './local/source')
         .split(',')
         .map((p) => path.resolve(process.cwd(), p.trim())),
       path.resolve(
@@ -39,7 +49,6 @@ export class FolderInitializerService implements OnApplicationBootstrap {
         this.configService.get<string>('LOCAL_REPORTS_PATH', './local/reports'),
       ),
 
-      path.resolve(process.cwd(), './ftp'),
       path.resolve(process.cwd(), './secrets'),
     ];
 

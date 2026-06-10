@@ -86,6 +86,79 @@ export class IntegrationService {
   }
 
   /**
+   * Notifies the receptor that a new batch is starting.
+   * Returns the loteId assigned by the external service.
+   */
+  async startBatch(
+    nombreArchivo: string,
+    cantidadLotes: number,
+    totalRegistros: number,
+    tipoOficio: string,
+  ): Promise<string> {
+    const startUrl = this.configService.get<string>(
+      'INTEGRATION_BATCH_START_URL',
+    );
+    if (!startUrl) {
+      this.logger.warn(
+        'INTEGRATION_BATCH_START_URL not configured. Skipping batch start.',
+      );
+      return 'LOCAL';
+    }
+
+    const token = await this.getToken();
+
+    const requestBody = {
+      nombreArchivo,
+      cantidadLotes,
+      totalRegistros,
+      tipoOficio,
+    };
+
+    this.logger.log(
+      `[startBatch] POST ${startUrl} -> ${JSON.stringify(requestBody)}`,
+    );
+
+    const response = await fetch(startUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(
+        `[startBatch] Respuesta ${response.status}: ${errorText}`,
+      );
+      throw new Error(`startBatch failed: ${response.status} - ${errorText}`);
+    }
+
+    const data: unknown = await response.json();
+    this.logger.log(`[startBatch] Respuesta recibida: ${JSON.stringify(data)}`);
+
+    let loteId: string;
+
+    if (typeof data === 'number' || typeof data === 'string') {
+      loteId = String(data);
+    } else if (data && typeof data === 'object') {
+      const obj = data as Record<string, unknown>;
+      const loteIdValue = obj.loteId ?? obj.batchId ?? obj.id ?? obj.lotId;
+      if (loteIdValue === undefined || loteIdValue === null) {
+        throw new Error('loteId not found in startBatch response.');
+      }
+      loteId = String(loteIdValue);
+    } else {
+      throw new Error(
+        `Unexpected startBatch response: ${JSON.stringify(data)}`,
+      );
+    }
+    this.logger.log(`[startBatch] Lote iniciado. loteId: ${loteId}`);
+    return loteId;
+  }
+
+  /**
    * Sends JSON data to the configured target endpoint using the stored token.
    * @param finalJson payload to send
    * @param source optional source identifier (e.g., 'IA_OK', 'EXCEL_OK')
@@ -103,7 +176,7 @@ export class IntegrationService {
       const token = await this.getToken();
 
       this.logger.log(
-        `Sending JSON data to external service for source [${source}].`,
+        `[sendData:${source}] POST ${dataUrl} -> ${JSON.stringify(finalJson)}`,
       );
 
       const response = await fetch(dataUrl, {
@@ -118,14 +191,12 @@ export class IntegrationService {
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.error(
-          `Failed to send data to REST service: ${response.status} - ${errorText}`,
+          `[sendData:${source}] Respuesta ${response.status}: ${errorText}`,
         );
         return false;
       }
 
-      this.logger.log(
-        `Successfully sent data from [${source}] to external API.`,
-      );
+      this.logger.log(`[sendData:${source}] Enviado correctamente.`);
       return true;
     } catch (error: any) {
       this.logger.error(

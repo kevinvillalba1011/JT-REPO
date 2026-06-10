@@ -10,7 +10,7 @@ export class DocumentRepository {
 
   async create(data: Prisma.DocumentCreateInput): Promise<Document> {
     try {
-      this.logger.log(`Creating document with hash: ${data.md5Hash}`);
+      this.logger.log(`Creating document: ${data.fileName}`);
       return await this.prisma.document.create({
         data: {
           ...data,

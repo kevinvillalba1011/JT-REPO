@@ -1,11 +1,8 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { DocumentRepository } from '../documents/repositories/document.repository';
 import { Document, DocumentState } from '@prisma/client';
 import { LocalReportStrategy } from './strategies/local-report.strategy';
-import { FtpReportStrategy } from './strategies/ftp-report.strategy';
-import { GmailReportStrategy } from './strategies/gmail-report.strategy';
 import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
 
@@ -14,11 +11,8 @@ export class ReportService {
   private readonly logger = new Logger(ReportService.name);
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly documentRepository: DocumentRepository,
     private readonly localStrategy: LocalReportStrategy,
-    private readonly ftpStrategy: FtpReportStrategy,
-    private readonly gmailStrategy: GmailReportStrategy,
     private readonly clientService: ClientService,
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {}
@@ -69,18 +63,8 @@ export class ReportService {
     const dateStr = `${day}${month}${year}`;
     const fileName = `${dateStr}/reporte.csv`;
 
-    const mode = this.configService.get<string>('GLOBAL_MODE', 'LOCAL');
-    let strategy;
-    if (mode === 'FTP') {
-      strategy = this.ftpStrategy;
-    } else if (mode === 'GMAIL') {
-      strategy = this.gmailStrategy;
-    } else {
-      strategy = this.localStrategy;
-    }
-
-    await strategy.saveReport(fileName, reportLines.join('\n'));
-    this.logger.log(`Report generation completed using ${mode} mode.`);
+    await this.localStrategy.saveReport(fileName, reportLines.join('\n'));
+    this.logger.log('Report generation completed.');
   }
 
   private checkIsClient(json: Record<string, unknown>): boolean {

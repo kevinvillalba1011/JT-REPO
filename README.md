@@ -6,7 +6,7 @@ Pipeline de procesamiento de documentos judiciales con NestJS, BullMQ (Redis), P
 
 ## 🚀 Guía de Inicio Rápido (Modo Desarrollo Local)
 
-En este modo, la aplicación de NestJS correrá localmente en tu máquina (para un desarrollo ágil) mientras que los servicios pesados de infraestructura (Postgres, Redis, FTP) correrán en contenedores de Docker.
+En este modo, la aplicación de NestJS correrá localmente en tu máquina (para un desarrollo ágil) mientras que los servicios pesados de infraestructura (Postgres, Redis) correrán en contenedores de Docker.
 
 ### A. Preparación del Entorno
 
@@ -40,7 +40,7 @@ TENANT_PROFILE=default # Configuración dinámica de Multi-Tenant
 Inicia únicamente los servicios de soporte en segundo plano:
 
 ```bash
-docker-compose up -d db redis ftp-server
+docker-compose up -d db redis
 ```
 
 _(Puedes verificar que estén encendidos ejecutando `docker-compose ps`)_
@@ -153,12 +153,9 @@ Requiere tener configurado el `Dockerfile`. Todos los servicios (incluyendo la a
 
 ---
 
-## 📂 Modos de Operación y Arquitectura de Archivos
+## 📂 Arquitectura de Archivos (Modo Local)
 
-El sistema soporta tres estrategias controladas por la variable `GLOBAL_MODE`. Esto dicta desde dónde absorbe los documentos iniciales, de dónde consume el listado maestro de clientes (`clients.csv`), y hacia dónde despacha el reporte diario a las 23:00.
-
-### 1. Modo LOCAL (`GLOBAL_MODE=LOCAL`)
-Estrategia ideal para pruebas y servidores locales. Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local/`).
+Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local/`). Esto dicta desde dónde absorbe los documentos iniciales, de dónde consume el listado maestro de clientes (`clients.csv`), y hacia dónde despacha el reporte diario a las 23:00.
 
 - **Base de Clientes:** Si subes clientes nuevos, debes actualizar y reemplazar el archivo local en `./local/data/clients.csv`. *(El sistema lo relee y refresca en caliente automáticamente cada 1 hora)*.
 - **Ingesta de Oficios:** El sistema puede leer de múltiples carpetas simultáneamente. 
@@ -167,23 +164,7 @@ Estrategia ideal para pruebas y servidores locales. Todo sucede dentro de la car
   - **Procesamiento:** El bot escanea todas estas ubicaciones de forma **recursiva** buscando archivos válidos.
 - **Reportes Finales:** Finalizada la IA, tu CSV limpio segmentado por campos se guardará con la fecha de hoy dentro de `./local/reports/`.
 - **Archivos Especiales:** Los archivos duplicados (MD5 existente) se mueven a `./local/duplicates` con un timestamp. Los archivos con formato no soportado (ej. `.docx`, `.zip`) se mueven a `./local/unsupported`.
-- *(Rutas de Transición)*: `local/in/`, `local/ocr/`, `local/done/` son internas del pipeline del sistema (Movit). No colocar ni tocar archivos allí para evitar disrumpir transacciones.
-
-### 2. Modo FTP (`GLOBAL_MODE=FTP`)
-Pensado para infraestructuras on-premise Legacy (`FTP_HOST`, `FTP_PORT`, `FTP_USER...`).
-
-> **💡 Nota sobre entorno local/Docker:** Debido a la configuración en `docker-compose.yml`, el contenedor del FTP (`jt-ftp`) tiene montado un volumen local. Todo lo que coloques en la carpeta externa `./ftp/` de tu PC aparecerá virtualmente dentro de `/ftp/testuser` en el contenedor. Por lo que, para simular y probar este flujo entero sin servidor remoto, es suficiente con arrojar allí los oficios en tu explorador de archivos.
-
-- **Base de Clientes:** Descarga cada hora el listado remoto asumiendo la raíz del FTP `/clients.csv`.
-- **Ingesta de Oficios:** Consume robóticamente los archivos explorando de forma **recursiva profunda (DFS)** todas las carpetas dentro del directorio `/source` del host remoto FTP y limpia el host dejándolos en el pipeline unificado de la BD. 
-- **Reportes Finales:** Empuja el archivo de salidos finales CSV a la carpeta `/reports` de tu FTP externo. 
-
-### 3. Modo GMAIL (`GLOBAL_MODE=GMAIL`)
-Gestión remota conectada a flujos judiciales vivos. Requiere `GMAIL_USER` y `GMAIL_APP_PASSWORD` en `.env`. *(Activar Contraseñas de Apps Nativas de Google, Login Tradicional no funciona en el bot).*
-
-- **Base de Clientes:** Sigue leyendo nativamente del archivo físico local de la app en `./local/data/clients.csv`.
-- **Ingesta de Oficios:** Vía IMAP, audita constantemente la bandeja de entrada, aislando los Emails, validando sus metadatos y encolando la lectura de todos sus Archivos Adjuntos.
-- **Reportes Finales:** Vía SMTP, un Bot re-envía por email el CSV del reporte final como correo saliente a la casilla origen.
+- *(Rutas de Transición)*: `local/in/`, `local/ocr/` son internas del pipeline del sistema. No colocar ni tocar archivos allí para evitar disrumpir transacciones.
 
 ---
 
@@ -191,14 +172,14 @@ Gestión remota conectada a flujos judiciales vivos. Requiere `GMAIL_USER` y `GM
 
 | Variable                   | Descripción                                      |
 | -------------------------- | ------------------------------------------------ |
-| `GLOBAL_MODE`              | `LOCAL` \| `FTP` \| `GMAIL` — Fuente del Sistema |
 | `SERVER_PATH_1...3`        | Rutas absolutas del servidor hacia las 3 carpetas a monitorear |
 | `LOCAL_SOURCE_PATHS`       | Mapeo interno de carpetas en el contenedor separadas por comas |
 | `TENANT_PROFILE`           | Controla esquema Multi-Tenant (ej. `default`)    |
 | `DATABASE_URL`             | URL de conexión a PostgreSQL                     |
 | `IN_PATH`                  | Carpeta de entrada (`./local/in`)                |
 | `OCR_PATH`                 | Carpeta intermedia OCR (`./local/ocr`)           |
-| `DONE_PATH`                | Carpeta de procesados (`./local/done`)           |
+| `EXCEL_DESTINATION_PATH`   | Destino final externo de Excel/CSV procesados (`./local/excel-done`) |
+| `OCR_DESTINATION_PATH`     | Destino final externo de documentos OCR procesados (`./local/ocr-done`) |
 | `UNSUPPORTED_PATH`         | Carpeta de no admitidos (`./local/unsupported`)  |
 | `DUPLICATES_PATH`          | Carpeta de duplicados (`./local/duplicates`)     |
 | `GEMINI_API_KEY`           | API Key provista por Google AI Studio            |
@@ -221,7 +202,7 @@ El sistema permite despachar automáticamente los resultados en tiempo real a un
 **1. Flujo de Extracción y Modelado:**
 
 ```text
-[Cron Job de Ingesta] (Escaneo recursivo local, FTP o IMAP)
+[Cron Job de Ingesta] (Escaneo recursivo local)
           ↓
      EN_COLA_OCR 
  (Orquestador de Estrategias)

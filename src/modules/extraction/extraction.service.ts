@@ -5,12 +5,9 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
 import { Redis } from 'ioredis';
 import { LocalFileStrategy } from './strategies/local-file.strategy';
-import { GmailFileStrategy } from './strategies/gmail-file.strategy';
 import { DocumentRepository } from '../documents/repositories/document.repository';
-import { FtpFileStrategy } from './strategies/ftp-file.strategy';
 import { DocumentState } from '@prisma/client';
 
 @Injectable()
@@ -24,8 +21,6 @@ export class ExtractionService implements OnApplicationBootstrap {
     private readonly configService: ConfigService,
 
     private readonly localStrategy: LocalFileStrategy,
-    private readonly gmailStrategy: GmailFileStrategy,
-    private readonly ftpStrategy: FtpFileStrategy,
     private readonly documentRepository: DocumentRepository,
     @InjectQueue('cola_ocr') private readonly ocrQueue: Queue,
     @InjectQueue('cola_modelo') private readonly modelQueue: Queue,
@@ -125,25 +120,8 @@ export class ExtractionService implements OnApplicationBootstrap {
     }
 
     try {
-      // 1. Select Strategy
-      const mode = this.configService.get<string>('GLOBAL_MODE', 'LOCAL');
-      let strategy;
-
-      if (mode === 'GMAIL') {
-        strategy = this.gmailStrategy;
-      } else if (mode === 'FTP') {
-        strategy = this.ftpStrategy;
-      } else {
-        strategy = this.localStrategy;
-      }
-
-      this.logger.log(`Executing strategy: ${mode}`);
-
-      // 2. Extract Files
-      // Strategy should move files to IN_PATH
-      // But LocalStrategy moved them to destinationFolder which IS IN_PATH?
-      // Yes, we pass IN_PATH to strategy.
-      const extractedFiles = await strategy.extractFiles(this.inPath);
+      // 1. Extract Files (LocalFileStrategy moves files into IN_PATH)
+      const extractedFiles = await this.localStrategy.extractFiles(this.inPath);
 
       // 3. Process Files in IN_PATH
       const files = await fs.promises.readdir(this.inPath);
@@ -183,11 +161,8 @@ export class ExtractionService implements OnApplicationBootstrap {
         return;
       }
 
-      // Generate MD5 using stream
-      const hex = await this.calculateFileHash(filePath);
-
-      // Check DB
-      const existingDoc = await this.documentRepository.findByHash(hex);
+      // Check duplicates by file name
+      const existingDoc = await this.documentRepository.findByFileName(fileName);
 
       if (existingDoc) {
         const duplicatesPath = this.configService.get<string>(
@@ -201,18 +176,15 @@ export class ExtractionService implements OnApplicationBootstrap {
           await fs.promises.mkdir(duplicatesPath, { recursive: true });
         }
 
-        const baseName = path.basename(filePath);
-        const newFileName = `${Date.now()}_${baseName}`;
+        const newFileName = `${Date.now()}_${fileName}`;
         const destination = path.join(duplicatesPath, newFileName);
 
         this.logger.warn(
-          `Duplicate file found (Hash: ${hex}). Recording in DB and moving to duplicates folder.`,
+          `Duplicate file found (Name: ${fileName}). Recording in DB and moving to duplicates folder.`,
         );
 
-        // Crear registro en la DB como DUPLICADO
         await this.documentRepository.create({
           fileName: newFileName,
-          md5Hash: hex,
           state: DocumentState.DUPLICADO,
         });
 
@@ -228,7 +200,6 @@ export class ExtractionService implements OnApplicationBootstrap {
       // Insert new Document
       const newDoc = await this.documentRepository.create({
         fileName: fileName,
-        md5Hash: hex,
         state: DocumentState.EN_COLA_OCR,
       });
 
@@ -272,12 +243,8 @@ export class ExtractionService implements OnApplicationBootstrap {
     const maxAgeMs = retentionDays * 24 * 60 * 60 * 1000;
 
     const pathsToClean = cleanAll
-      ? [
-          this.inPath,
-          this.ocrPath,
-          this.configService.get<string>('DONE_PATH', './local/done'),
-        ]
-      : [this.configService.get<string>('DONE_PATH', './local/done')];
+      ? [this.inPath, this.ocrPath]
+      : [this.ocrPath];
 
     for (const folder of pathsToClean) {
       try {
@@ -302,15 +269,5 @@ export class ExtractionService implements OnApplicationBootstrap {
         }
       }
     }
-  }
-
-  private async calculateFileHash(filePath: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const hash = crypto.createHash('md5');
-      const stream = fs.createReadStream(filePath);
-      stream.on('data', (chunk) => hash.update(chunk));
-      stream.on('end', () => resolve(hash.digest('hex')));
-      stream.on('error', (err) => reject(err));
-    });
   }
 }

@@ -28,10 +28,6 @@ INGRESADO → EN_COLA_OCR → PROCESANDO_OCR → EN_COLA_MODELO → PROCESANDO_M
 
 ## Etapa 1: Ingreso del Documento (Origen)
 
-El documento puede llegar por 3 vías. Cada una tiene su propia **estrategia de extracción**.
-
-### 1.1 Modo LOCAL
-
 **Archivo:** `src/modules/extraction/strategies/local-file.strategy.ts`
 
 | Método | Línea | Qué hace |
@@ -43,32 +39,6 @@ El documento puede llegar por 3 vías. Cada una tiene su propia **estrategia de 
 1. Copia el archivo desde la carpeta origen (ej: `C:\pruebas\`) hacia `./local/in/`
 2. Usa el **nombre original** del archivo (sin timestamp)
 3. Verifica en BD (`findByFileName`) para no copiar duplicados
-
-### 1.2 Modo FTP
-
-**Archivo:** `src/modules/extraction/strategies/ftp-file.strategy.ts`
-
-| Método | Línea | Qué hace |
-| :--- | :--- | :--- |
-| `extractFiles(destinationFolder)` | 17 | Conecta al FTP y descarga archivos recursivamente |
-| `readFtpDirectoryRecursive()` | 67 | Navega directorios FTP y descarga archivos válidos |
-
-**Flujo:**
-1. Conecta al servidor FTP con `basic-ftp`
-2. Descarga archivos desde `/source` hacia `./local/in/`
-3. Conserva el **nombre original** del archivo remoto
-
-### 1.3 Modo GMAIL
-
-**Archivo:** `src/modules/extraction/strategies/gmail-file.strategy.ts`
-
-| Método | Línea | Qué hace |
-| :--- | :--- | :--- |
-| `extractFiles(destinationFolder)` | 17 | Conecta por IMAP a Gmail, busca emails con adjuntos |
-
-**Flujo:**
-1. Busca emails no leídos con asunto `GMAIL_SEARCH_SUBJECT`
-2. Descarga adjuntos PDF a `./local/in/`
 
 ---
 
@@ -235,10 +205,7 @@ Contiene:
    - Obtiene `demandados[]` del JSON
    - Genera **una fila CSV por cada demandado** (expansión de array)
    - Usa `clientFields` para ordenar columnas
-3. Guarda CSV según estrategia:
-   - Local → `src/modules/report/strategies/local-report.strategy.ts`
-   - FTP → `src/modules/report/strategies/ftp-report.strategy.ts`
-   - Gmail → `src/modules/report/strategies/gmail-report.strategy.ts`
+3. Guarda CSV vía `src/modules/report/strategies/local-report.strategy.ts`
 
 ---
 
@@ -249,8 +216,6 @@ Contiene:
 | **Bootstrap** | `src/main.ts` | `bootstrap()` |
 | **Módulos** | `src/app.module.ts` | `AppModule` imports |
 | **Ingesta Local** | `src/modules/extraction/strategies/local-file.strategy.ts` | `extractFiles()` |
-| **Ingesta FTP** | `src/modules/extraction/strategies/ftp-file.strategy.ts` | `extractFiles()` |
-| **Ingesta Gmail** | `src/modules/extraction/strategies/gmail-file.strategy.ts` | `extractFiles()` |
 | **Orquestación** | `src/modules/extraction/extraction.service.ts` | `handleCron()` → `processFile()` |
 | **Hash MD5** | `src/modules/extraction/extraction.service.ts` | `calculateFileHash()` |
 | **Creación Documento** | `src/modules/documents/repositories/document.repository.ts` | `create()` |

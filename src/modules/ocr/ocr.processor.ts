@@ -21,6 +21,7 @@ import { IntegrationService } from '../integration/integration.service';
 export class OcrProcessor extends WorkerHost {
   private readonly logger = new Logger(OcrProcessor.name);
   private readonly ocrPath: string;
+  private readonly excelDestinationPath: string;
   private readonly strategies: TextExtractorStrategy[];
 
   constructor(
@@ -36,6 +37,13 @@ export class OcrProcessor extends WorkerHost {
     this.ocrPath = path.resolve(
       process.cwd(),
       this.configService.get<string>('OCR_PATH', './local/ocr'),
+    );
+    this.excelDestinationPath = path.resolve(
+      process.cwd(),
+      this.configService.get<string>(
+        'EXCEL_DESTINATION_PATH',
+        './local/excel-done',
+      ),
     );
     this.strategies = [this.docAiStrategy, this.excelStrategy];
   }
@@ -78,10 +86,13 @@ export class OcrProcessor extends WorkerHost {
           DocumentState.PROCESANDO_EXCEL,
         );
 
-        await this.massiveExcelService.process(filePath, baseName);
+        const batchResult = await this.massiveExcelService.process(
+          filePath,
+          baseName,
+        );
 
-        // Mover a la carpeta de procesados (OCR_PATH como indica tu flujo)
-        const newFilePath = path.join(this.ocrPath, baseName);
+        // Mover al destino final externo de archivos Excel/CSV procesados
+        const newFilePath = path.join(this.excelDestinationPath, baseName);
         try {
           await fs.promises.rename(filePath, newFilePath);
         } catch (err) {
@@ -89,28 +100,32 @@ export class OcrProcessor extends WorkerHost {
           await fs.promises.unlink(filePath);
         }
 
+        // Eliminar archivo original de la carpeta fuente
+        if (originalPath && originalPath !== filePath) {
+          try {
+            await fs.promises.unlink(originalPath);
+          } catch (err: any) {
+            this.logger.warn(
+              `Could not remove original source file ${originalPath}: ${err.message}`,
+            );
+          }
+        }
+
+        const summaryText =
+          `Batch loteId=${batchResult.loteId} ` +
+          `enviados=${batchResult.enviados} fallidos=${batchResult.fallidos}` +
+          (batchResult.filasFallidas.length
+            ? ` filasFallidas=[${batchResult.filasFallidas.join(',')}]`
+            : '');
+
         await this.documentRepository.updateState(
           documentId,
           DocumentState.EXCEL_OK,
-          {
-            ocrText:
-              'Archivo Excel masivo procesado correctamente (Bypass IA).',
-          },
-        );
-
-        // Integrate with external REST service for EXCEL_OK
-        await this.integrationService.sendData(
-          {
-            documentId,
-            fileName: baseName,
-            processedAt: new Date().toISOString(),
-            message: 'Carga masiva finalizada',
-          },
-          'EXCEL_OK',
+          { ocrText: summaryText },
         );
 
         this.logger.log(
-          `Carga masiva finalizada para ${baseName}. Estado: EXCEL_OK`,
+          `Carga masiva finalizada para ${baseName}. ${summaryText}`,
         );
         return;
       }

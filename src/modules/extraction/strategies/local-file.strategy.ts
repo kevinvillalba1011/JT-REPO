@@ -19,7 +19,7 @@ export class LocalFileStrategy implements FileExtractorStrategy {
   ) {
     const paths = this.configService.get<string>(
       'LOCAL_SOURCE_PATHS',
-      './local/ftp',
+      './local/source',
     );
     this.sourcePaths = paths.split(',').map((p) => p.trim());
   }

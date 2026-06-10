@@ -23,24 +23,24 @@
 - `src/`: Código fuente NestJS.
   - `modules/`: Lógica de negocio (Extraction, Pipeline, Gemini, Reports, etc.).
   - `common/`: Servicios transversales e inicializadores.
-- `local/`: Persistencia local temporal (carpetas `in`, `ocr`, `done`).
+- `local/`: Persistencia local temporal (carpetas `in`, `ocr`, `excel-done`, `ocr-done`, `unsupported`, `duplicates`).
 - `migrations/`: Migraciones de Prisma/PostgreSQL.
-- `ftp/`: Simulación o almacenamiento local para flujos FTP.
 - `schema.prisma`: Definición del modelo de datos (`snake_case` en SQL).
 
 ## 🏛 Arquitectura y Flujos
 
 ### 🧩 Diagrama de Arquitectura (Container Level)
 
-Este diagrama muestra la interacción entre los módulos de NestJS, la persistencia y los servicios externos de IA.
+Este diagrama muestra la interacción entre los módulos de NestJS, la persistencia y los servicios externos (GCP + integración REST).
 
 ```mermaid
 graph TB
     subgraph "Capas del Sistema (NestJS)"
         ES[ExtractionService]
-        OW[OcrWorker]
-        MW[ModelWorker]
-        RS[ReportsService]
+        OW[OcrProcessor]
+        MW[ModelProcessor]
+        ME[MassiveExcelService]
+        RS[ReportService]
     end
 
     subgraph "Infraestructura & Persistencia"
@@ -54,38 +54,86 @@ graph TB
         Gemini(Gemini Pro/Flash)
     end
 
+    subgraph "Integración Externa"
+        EXT(API REST Externa)
+    end
+
     %% Flujos
-    Source(FTP / Gmail / Local) --> ES
-    ES --> FS
+    Source(LOCAL_SOURCE_PATHS / SERVER_PATH_*) --> ES
+    ES -- copia a IN_PATH --> FS
     ES -- Registra Job --> RD
-    RD -- Procesa Job --> OW
-    RD -- Procesa Job --> MW
-    OW -- OCR Extract --> DocAI
+    RD -- cola_ocr --> OW
+    OW -- .xlsx/.xls/.csv --> ME
+    OW -- .pdf/.jpg/.png --> DocAI
+    DocAI --> MW
+    RD -- cola_modelo --> MW
     MW -- LLM Analysis --> Gemini
     OW -- Update State --> DB
     MW -- Save JSON --> DB
-    RS -- Generate CSV/FTP --> DB
+    ME -- Persist ExcelRecord --> DB
+    MW -- sendData IA_OK --> EXT
+    ME -- sendData EXCEL_ROW --> EXT
+    RS -- Genera CSV --> DB
 ```
 
-### 📋 Flujo de Procesamiento (Modo FTP)
+### 📦 Flujo de Procesamiento Masivo (Excel/CSV)
 
-Representación visual del ciclo de vida de un documento judicial.
+`MassiveExcelService` (`src/modules/ocr/services/massive-excel.service.ts`) bypassea OCR/IA por completo.
+
+```mermaid
+flowchart TD
+    classDef integration fill:#1E88E5,stroke:#fff,color:#fff;
+    classDef process fill:#2E8B57,stroke:#fff,color:#fff;
+    classDef error fill:#C0392B,stroke:#fff,color:#fff;
+
+    Start((⏱️ Cron Extraction)) --> Scan[🔎 Escaneo LOCAL_SOURCE_PATHS]
+    Scan --> InPath[📁 Copia a IN_PATH]
+    InPath --> MD5[#️⃣ Valida Hash MD5]
+    MD5 -- Duplicado --> Dup[📁 Mueve a DUPLICATES_PATH]:::error
+    MD5 -- Nuevo --> Doc[📝 Document EN_COLA_OCR]
+    Doc --> Queue[📥 cola_ocr]
+    Queue --> Detect{¿Extensión .xlsx/.xls/.csv?}
+    Detect -- Sí --> ReadWb[📖 Lee workbook con exceljs/xlsx]
+    ReadWb --> Tipo[🏷️ Detecta tipo de oficio\n EMBARGO/DESEMBARGO/ALCANCE]
+    Tipo --> Clear[🧹 Limpia ExcelRecord previos\n por excelName - idempotencia]
+    Clear --> MapRows[🔁 mapRowToPayload por fila\n EXCEL_FIELD_MAP + defaults Davibank]
+    MapRows --> Persist[💾 Guarda ExcelRecord por fila]:::process
+    Persist --> Batch[🚀 startBatch -> obtiene loteId]:::integration
+    Batch --> SendRows[📤 sendData por fila\n concurrencia=INTEGRATION_BATCH_CONCURRENCY\n hasta 3 reintentos]:::integration
+    SendRows --> Move[📁 Mueve archivo a EXCEL_DESTINATION_PATH]
+    Move --> State[✅ Document EXCEL_OK\n ocrText = BatchResult]:::process
+```
+
+### 🤖 Flujo de Procesamiento Individual (OCR + IA)
+
+PDFs/imágenes pasan por `OcrProcessor` (Document AI) y `ModelProcessor` (Gemini).
 
 ```mermaid
 flowchart TD
     classDef ai fill:#673AB7,stroke:#fff,color:#fff;
     classDef process fill:#2E8B57,stroke:#fff,color:#fff;
+    classDef error fill:#C0392B,stroke:#fff,color:#fff;
+    classDef integration fill:#1E88E5,stroke:#fff,color:#fff;
 
-    Start((⏱️ Cron 15s)) --> Scan[🔎 Escaneo FTP/Local]
-    Scan --> Download[⬇️ Descarga a /local/in/]
-    Download --> MD5[#️⃣ Valida Hash MD5]
-    MD5 -- Nuevo --> OCR[🤖 Encola OCR]
-    OCR --> DocAI[📤 Google Document AI]:::ai
-    DocAI --> MoveOCR[📁 Mueve a /local/ocr/]
-    MoveOCR --> Model[📥 Encola Modelo]
-    Model --> Gemini[🧠 Gemini LLM]:::ai
-    Gemini --> MoveDone[📁 Mueve a /local/done/]
-    MoveDone --> Save[✅ Guarda JSON en DB]:::process
+    Start((⏱️ Cron Extraction)) --> Scan[🔎 Escaneo LOCAL_SOURCE_PATHS]
+    Scan --> InPath[📁 Copia a IN_PATH]
+    InPath --> MD5[#️⃣ Valida Hash MD5]
+    MD5 -- Duplicado --> Dup[📁 Mueve a DUPLICATES_PATH]:::error
+    MD5 -- Nuevo --> Doc[📝 Document EN_COLA_OCR]
+    Doc --> Queue[📥 cola_ocr]
+    Queue --> Detect{¿Extensión soportada?}
+    Detect -- No --> Unsup[📁 Mueve a UNSUPPORTED_PATH\n FORMATO_NO_SOPORTADO]:::error
+    Detect -- "PDF/JPG/PNG" --> DocAI[📤 DocumentAiStrategy\n Google Document AI]:::ai
+    DocAI -- Error --> ErrOcr[❌ ERROR_OCR\n retry BullMQ]:::error
+    DocAI --> SaveText[💾 Guarda ocrText\n EN_COLA_MODELO]:::process
+    SaveText --> MoveOcr[📁 Mueve a OCR_PATH]
+    MoveOcr --> ModelQueue[📥 cola_modelo\n 6 intentos, backoff 15s]
+    ModelQueue --> Gemini[🧠 GeminiService.extraerJudicial\n TenantProfile prompt+schema\n fallback multi-modelo]:::ai
+    Gemini -- Error --> ErrModel[❌ MODEL_ERROR\n retry BullMQ]:::error
+    Gemini --> PostProcess[🔧 Post-procesa JSON\n rutaPdf, fechas, nombreOficioFinal]:::process
+    PostProcess --> Save[✅ Document IA_OK\n jsonModel guardado]:::process
+    Save --> MoveDone[📁 Mueve a OCR_DESTINATION_PATH]
+    Save --> Send[📤 IntegrationService.sendData IA_OK]:::integration
 ```
 
 ## 🛠 Patrones de Diseño y Convenciones
@@ -108,6 +156,9 @@ flowchart TD
 
 | Fecha | Decisión Técnica | Justificación / Contexto |
 | :--- | :--- | :--- |
+| 2026-06-10 | Diagramas de arquitectura actualizados | Se reemplazaron los diagramas del Container Level y "Modo FTP" (obsoletos) por tres diagramas: arquitectura general, flujo masivo (Excel/CSV vía `MassiveExcelService`) y flujo individual (OCR + Gemini vía `OcrProcessor`/`ModelProcessor`), reflejando `EXCEL_DESTINATION_PATH`/`OCR_DESTINATION_PATH` y `IntegrationService`. |
+| 2026-06-10 | Eliminación de modos FTP/Gmail | Se removió `GLOBAL_MODE` y todo el código de `*-file/client/report.strategy.ts` para FTP/Gmail (`basic-ftp`, `imapflow`); solo queda `Local*Strategy`. Ver `docs/superpowers/specs/2026-06-10-remove-ftp-gmail-modes-design.md`. |
+| 2026-06-10 | Rutas de destino externas configurables | Se reemplazó `DONE_PATH` por `EXCEL_DESTINATION_PATH` (masivos) y `OCR_DESTINATION_PATH` (OCR/PDF), permitiendo mover los archivos procesados fuera del proyecto. Ver `docs/superpowers/specs/2026-06-10-external-destination-paths-design.md`. |
 | 2026-06-04 | Deduplicación estricta contra DB | Se eliminó el Set en memoria (`processedFiles`) en `LocalFileStrategy` para forzar la validación de archivos procesados únicamente contra la base de datos. |
 | 2026-06-04 | Extracción de ruta original (`ruta_archivo`) | Propagación de `originalPath` desde las estrategias de extracción a través de BullMQ para inyectar la ruta de origen real en el JSON final. |
 | 2026-06-04 | Ajuste esquema extracción Davibank | Actualización de tipos y reglas de prompt en `DavibankProfile` para campos específicos (requerimientos, desembargos, etc.). |
@@ -124,6 +175,7 @@ flowchart TD
 
 - [x] Integrar conexión a servicios REST externos (IA_OK / EXCEL_OK).
 - [x] Migración de Memoria a AGENTS.md.
+- [x] Eliminar modos FTP/Gmail (`GLOBAL_MODE`) — solo queda LOCAL.
 - [ ] Implementar Bull Dashboard para monitoreo visual (Propuesta).
-- [ ] Separar GmailExtractionStrategy en módulo propio (Postergado).
 - [ ] Configuración de credenciales reales en .env.
+- [ ] Evaluar eliminación de `report`/`client` modules (segunda iteración, sin diseño aún).
