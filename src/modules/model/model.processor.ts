@@ -102,13 +102,59 @@ export class ModelProcessor extends WorkerHost {
         `Model Success. Result keys: ${Object.keys(resultJson).join(', ')}`,
       );
 
-      const fileName = path.basename(filePath);
-      const doneFilePath = path.join(this.ocrDestinationPath, fileName);
+      // Inyectar fechas manualmente en formato ISO 8601
+      const nowIso = new Date().toISOString();
+      const now = new Date();
+
+      if (!resultJson.oficio || typeof resultJson.oficio !== 'object') {
+        resultJson.oficio = {};
+      }
+      const oficio = resultJson.oficio as Record<string, unknown>;
+      oficio.fechaHoraProcesamientoOficio = nowIso;
+
+      // Inyectar nombreOficioInicial desde el nombre del archivo original (trazabilidad)
+      const nombreOficioInicial = path.basename(
+        filePath,
+        path.extname(filePath),
+      );
+      oficio.nombreOficioInicial = nombreOficioInicial;
+
+      // Post-procesar nombreOficioFinal: reemplazar placeholder "00000000" con fecha proceso + consecutivo
+      let nombreOficioFinal =
+        typeof oficio.nombreOficioFinal === 'string'
+          ? oficio.nombreOficioFinal
+          : '';
+      if (nombreOficioFinal.includes('00000000')) {
+        const mmdd =
+          String(now.getMonth() + 1).padStart(2, '0') +
+          String(now.getDate()).padStart(2, '0');
+
+        const docsToday = await this.documentRepository.countProcessedToday();
+        const consecutivo = String(docsToday + 1).padStart(4, '0');
+
+        nombreOficioFinal = nombreOficioFinal.replace(
+          '00000000',
+          `${mmdd}${consecutivo}`,
+        );
+      }
+      oficio.nombreOficioFinal = nombreOficioFinal;
+
+      // Renombrar el archivo con nombreOficioFinal al moverlo a OCR_DESTINATION_PATH;
+      // nombreOficioInicial conserva el nombre original para trazabilidad.
+      const fileExt = path.extname(filePath);
+      const sanitizedFinalName = nombreOficioFinal
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .trim();
+      const doneFileName =
+        sanitizedFinalName && sanitizedFinalName !== '0'
+          ? `${sanitizedFinalName}${fileExt}`
+          : path.basename(filePath);
+      const doneFilePath = path.join(this.ocrDestinationPath, doneFileName);
 
       // Move file
       try {
         await fs.promises.rename(filePath, doneFilePath);
-      } catch (err) {
+      } catch {
         await fs.promises.copyFile(filePath, doneFilePath);
         await fs.promises.unlink(filePath);
       }
@@ -125,44 +171,7 @@ export class ModelProcessor extends WorkerHost {
         }
       }
 
-      // Inyectar fechas manualmente en formato ISO 8601
-      const nowIso = new Date().toISOString();
-      const now = new Date();
-
-      if (!resultJson.oficio || typeof resultJson.oficio !== 'object') {
-        resultJson.oficio = {};
-      }
-      (resultJson.oficio as Record<string, unknown>).rutaPdf =
-        originalPath || filePath;
-      (
-        resultJson.oficio as Record<string, unknown>
-      ).fechaHoraProcesamientoOficio = nowIso;
-
-      // Inyectar nombreOficioInicial desde el nombre del archivo PDF
-      const nombreOficioInicial = path.basename(
-        filePath,
-        path.extname(filePath),
-      );
-      (resultJson.oficio as Record<string, unknown>).nombreOficioInicial =
-        nombreOficioInicial;
-
-      // Post-procesar nombreOficioFinal: reemplazar placeholder "00000000" con fecha proceso + consecutivo
-      const nombreOficioFinal = (resultJson.oficio as Record<string, unknown>)
-        .nombreOficioFinal;
-      if (
-        typeof nombreOficioFinal === 'string' &&
-        nombreOficioFinal.includes('00000000')
-      ) {
-        const mmdd =
-          String(now.getMonth() + 1).padStart(2, '0') +
-          String(now.getDate()).padStart(2, '0');
-
-        const docsToday = await this.documentRepository.countProcessedToday();
-        const consecutivo = String(docsToday + 1).padStart(4, '0');
-
-        (resultJson.oficio as Record<string, unknown>).nombreOficioFinal =
-          nombreOficioFinal.replace('00000000', `${mmdd}${consecutivo}`);
-      }
+      oficio.rutaPdf = doneFilePath;
 
       if (
         !resultJson.infoCliente ||
