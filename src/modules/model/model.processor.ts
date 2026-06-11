@@ -10,6 +10,7 @@ import { GeminiService } from '../../common/services/gemini.service';
 import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
 import { IntegrationService } from '../integration/integration.service';
+import { DailySequenceService } from '@/common/services/daily-sequence.service';
 
 @Injectable()
 @Processor('cola_modelo', {
@@ -30,6 +31,7 @@ export class ModelProcessor extends WorkerHost {
     private readonly clientService: ClientService,
     private readonly geminiService: GeminiService,
     private readonly integrationService: IntegrationService,
+    private readonly dailySequence: DailySequenceService,
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {
     super();
@@ -104,7 +106,6 @@ export class ModelProcessor extends WorkerHost {
 
       // Inyectar fechas manualmente en formato ISO 8601
       const nowIso = new Date().toISOString();
-      const now = new Date();
 
       if (!resultJson.oficio || typeof resultJson.oficio !== 'object') {
         resultJson.oficio = {};
@@ -125,13 +126,7 @@ export class ModelProcessor extends WorkerHost {
           ? oficio.nombreOficioFinal
           : '';
       if (nombreOficioFinal.includes('00000000')) {
-        const mmdd =
-          String(now.getMonth() + 1).padStart(2, '0') +
-          String(now.getDate()).padStart(2, '0');
-
-        const docsToday = await this.documentRepository.countProcessedToday();
-        const consecutivo = String(docsToday + 1).padStart(4, '0');
-
+        const { mmdd, consecutivo } = await this.dailySequence.getNext();
         nombreOficioFinal = nombreOficioFinal.replace(
           '00000000',
           `${mmdd}${consecutivo}`,

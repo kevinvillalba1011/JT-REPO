@@ -70,3 +70,10 @@ model ExcelRecord {
   @@index([tipoOficio])
   @@map("excel_records")
 }
+
+model DailySequence {
+  date      DateTime @id @map("fecha") @db.Date
+  nextValue Int      @default(1) @map("siguiente_valor")
+
+  @@map("daily_sequences")
+}

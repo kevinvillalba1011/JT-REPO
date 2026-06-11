@@ -4,11 +4,8 @@ import * as path from 'path';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { IntegrationService } from '../../integration/integration.service';
-import {
-  applyNombreOficioFinalSuffix,
-  mapRowToPayload,
-  SUPPORTED_TIPOS_OFICIO,
-} from './excel-field-mapping';
+import { DailySequenceService } from '@/common/services/daily-sequence.service';
+import { mapRowToPayload, SUPPORTED_TIPOS_OFICIO } from './excel-field-mapping';
 
 export interface BatchResult {
   loteId: string;
@@ -32,6 +29,7 @@ export class MassiveExcelService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly integrationService: IntegrationService,
+    private readonly dailySequence: DailySequenceService,
   ) {}
 
   async process(filePath: string, fileName: string): Promise<BatchResult> {
@@ -148,37 +146,33 @@ export class MassiveExcelService {
   }
 
   /**
-   * Lee el workbook en modo streaming (la opción 'hyperlinks: ignore' / 'styles: ignore'
-   * evita el bug de exceljs@4.4.0 que falla leyendo comentarios de celda) y detecta el
-   * tipo de oficio (EMBARGO/DESEMBARGO/ALCANCE) a partir del nombre de la primera hoja,
-   * mapeando cada fila al JSON final.
+   * Lee el workbook completo en memoria (no streaming) y detecta el tipo de
+   * oficio (EMBARGO/DESEMBARGO/ALCANCE) a partir del nombre de la primera
+   * hoja, mapeando cada fila al JSON final.
+   *
+   * Se usa el lector no-streaming porque `WorkbookReader` (streaming) solo
+   * resuelve `xl/sharedStrings.xml` correctamente si ese archivo aparece
+   * antes que las hojas dentro del .zip; cuando un .xlsx se reguarda con
+   * Excel/LibreOffice el orden suele invertirse y todas las celdas de texto
+   * llegan como referencias `{ sharedString: N }` sin resolver. Las
+   * plantillas que procesa este flujo son pequeñas, por lo que cargarlas
+   * completas en memoria es seguro.
    */
   private async parseWorkbook(filePath: string): Promise<{
     tipoOficio: string;
     rows: ParsedRow[];
   }> {
-    const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {
-      entries: 'emit',
-      sharedStrings: 'cache',
-      hyperlinks: 'ignore',
-      styles: 'ignore',
-      worksheets: 'emit',
-    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
 
-    let sheetName = '';
+    const worksheet = workbook.worksheets[0];
+    const sheetName = worksheet?.name ?? '';
     const dataRows: any[][] = [];
 
-    for await (const worksheetReader of workbookReader) {
-      sheetName = (worksheetReader as unknown as { name?: string }).name ?? '';
-
-      for await (const row of worksheetReader) {
-        // row.values es 1-indexado (índice 0 vacío); lo normalizamos a 0-indexado
-        dataRows.push((row.values as any[]).slice(1));
-      }
-
-      // Solo procesamos la primera hoja
-      break;
-    }
+    worksheet?.eachRow({ includeEmpty: true }, (row) => {
+      // row.values es 1-indexado (índice 0 vacío); lo normalizamos a 0-indexado
+      dataRows.push((row.values as any[]).slice(1));
+    });
 
     const tipoOficio = this.resolveTipoOficio(sheetName, filePath);
     const fechaProcesamiento = new Date().toISOString();
@@ -197,10 +191,7 @@ export class MassiveExcelService {
       const firstNonEmpty = row.find(
         (c: unknown) => c !== undefined && c !== null && c !== '',
       );
-      if (
-        firstNonEmpty &&
-        TITLE_ROW_PATTERN.test(String(firstNonEmpty))
-      ) {
+      if (firstNonEmpty && TITLE_ROW_PATTERN.test(String(firstNonEmpty))) {
         headerIndex = r + 1;
         this.logger.debug(
           `[parseWorkbook] Fila título detectada en índice ${r}: "${String(firstNonEmpty).substring(0, 60)}"`,
@@ -211,15 +202,15 @@ export class MassiveExcelService {
 
     const headers = dataRows[headerIndex] || [];
     this.logger.debug(
-      `[parseWorkbook] headerIndex=${headerIndex}, headers (normalizados): ${headers.map((h: unknown) => String(h ?? '').trim().substring(0, 30)).join(' | ')}`,
+      `[parseWorkbook] headerIndex=${headerIndex}, headers (normalizados): ${headers
+        .map((h: unknown) =>
+          String(h ?? '')
+            .trim()
+            .substring(0, 30),
+        )
+        .join(' | ')}`,
     );
     const rows: ParsedRow[] = [];
-
-    const now = new Date();
-    const mmdd =
-      String(now.getMonth() + 1).padStart(2, '0') +
-      String(now.getDate()).padStart(2, '0');
-    const baseConsecutivo = await this.countExcelRecordsToday();
 
     // Saltar filas descriptivas/ejemplo entre el header y los datos reales.
     // Estas filas contienen texto como "Numérico Máximo", "Alfabético", "Sin puntos ni comas. Ej:"
@@ -227,12 +218,19 @@ export class MassiveExcelService {
       /^(num[eé]rico|alfab[eé]tico|alfanum[eé]rico|sin puntos|caracteres|[A-Z]\s*\/\s*[A-Z]{1,3}\s*\/)/i;
 
     let dataStartIndex = headerIndex + 1;
-    for (let i = headerIndex + 1; i < Math.min(dataRows.length, headerIndex + 4); i++) {
+    for (
+      let i = headerIndex + 1;
+      i < Math.min(dataRows.length, headerIndex + 4);
+      i++
+    ) {
       const row = dataRows[i] || [];
       const firstNonEmpty = row.find(
         (c: unknown) => c !== undefined && c !== null && c !== '',
       );
-      if (firstNonEmpty && DESCRIPTION_ROW_PATTERN.test(String(firstNonEmpty).trim())) {
+      if (
+        firstNonEmpty &&
+        DESCRIPTION_ROW_PATTERN.test(String(firstNonEmpty).trim())
+      ) {
         this.logger.debug(
           `[parseWorkbook] Saltando fila descriptiva en índice ${i}: "${String(firstNonEmpty).substring(0, 50)}"`,
         );
@@ -242,7 +240,9 @@ export class MassiveExcelService {
       }
     }
 
-    this.logger.debug(`[parseWorkbook] Datos reales comienzan en índice ${dataStartIndex}`);
+    this.logger.debug(
+      `[parseWorkbook] Datos reales comienzan en índice ${dataStartIndex}`,
+    );
 
     for (let i = dataStartIndex; i < dataRows.length; i++) {
       const row = dataRows[i];
@@ -260,11 +260,19 @@ export class MassiveExcelService {
         tipoOficio,
         fechaProcesamiento,
       );
-      applyNombreOficioFinalSuffix(
-        payload,
-        mmdd,
-        baseConsecutivo + rows.length + 1,
-      );
+
+      const oficio = payload.oficio as Record<string, unknown> | undefined;
+      const nombreFinal =
+        oficio && typeof oficio.nombreOficioFinal === 'string'
+          ? oficio.nombreOficioFinal
+          : '';
+      if (oficio && nombreFinal.includes('00000000')) {
+        const { mmdd, consecutivo } = await this.dailySequence.getNext();
+        oficio.nombreOficioFinal = nombreFinal.replace(
+          '00000000',
+          `${mmdd}${consecutivo}`,
+        );
+      }
 
       rows.push({
         numeroFila: rows.length + 1,
@@ -273,15 +281,6 @@ export class MassiveExcelService {
     }
 
     return { tipoOficio, rows };
-  }
-
-  /** Cuenta los `ExcelRecord` ya guardados hoy, usado como base del consecutivo de `nombreOficioFinal`. */
-  private async countExcelRecordsToday(): Promise<number> {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    return this.prisma.excelRecord.count({
-      where: { createdAt: { gte: startOfDay } },
-    });
   }
 
   /** Detecta el tipo de oficio por nombre de hoja, con fallback al nombre del archivo. */

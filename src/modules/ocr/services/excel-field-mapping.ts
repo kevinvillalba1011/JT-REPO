@@ -268,30 +268,3 @@ export function mapRowToPayload(
   return payload;
 }
 
-const NOMBRE_OFICIO_FINAL_PLACEHOLDER = '00000000';
-
-/**
- * Reemplaza el placeholder "00000000" en `oficio.nombreOficioFinal` por
- * `{MMDD}{consecutivo de 4 dígitos}`, replicando la convención de
- * `ModelProcessor` en el flujo de IA. La columna "NOMBRE OFICIO FINAL" del
- * Excel debe traer ese placeholder al final (p. ej. "20250232006224 DEL 241125 00000000").
- */
-export function applyNombreOficioFinalSuffix(
-  payload: Record<string, any>,
-  mmdd: string,
-  consecutivo: number,
-): void {
-  const oficio = payload.oficio as Record<string, unknown>;
-  const nombreOficioFinal = oficio.nombreOficioFinal;
-
-  if (
-    typeof nombreOficioFinal === 'string' &&
-    nombreOficioFinal.includes(NOMBRE_OFICIO_FINAL_PLACEHOLDER)
-  ) {
-    const suffix = `${mmdd}${String(consecutivo).padStart(4, '0')}`;
-    oficio.nombreOficioFinal = nombreOficioFinal.replace(
-      NOMBRE_OFICIO_FINAL_PLACEHOLDER,
-      suffix,
-    );
-  }
-}
