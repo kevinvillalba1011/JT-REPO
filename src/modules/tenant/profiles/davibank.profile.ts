@@ -71,7 +71,7 @@ export const DavibankProfile: TenantProfile = {
           nombreOficioFinal: {
             type: SchemaType.STRING,
             description:
-              'Nombre construido del oficio. Estructura: {numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}. Ejemplo: 20250232006224 DEL 241125 25110186. El numeroOficio se extrae del documento con prioridad: 1) EXPEDIENTE, 2) OFICIO, 3) COMUNICADO. Máximo 23 dígitos. La fechaOficio es la fecha del oficio en formato DDMMAA. Los últimos 8 caracteres se completan en post-procesamiento. Máximo 40 caracteres.',
+              'Nombre construido del oficio. Estructura: {numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}. Ejemplo: 46862022 DEL 141025 00000000. El numeroOficio viene de la etiqueta EXPEDIENTE (ej. "EXPEDIENTE 4686-2022" → "46862022"), OFICIO o COMUNICADO. NUNCA usar números de RESOLUCIÓN (ni embargo ni desembargo) — esos van en otros campos. Si no hay etiqueta EXPEDIENTE/OFICIO/COMUNICADO, usar "0". Solo dígitos, máximo 23. La fechaOficio es DDMMAA. Los últimos 8 caracteres se completan en post-procesamiento. Máximo 40 caracteres.',
           },
           oficioEmbargoADesembargar: {
             type: SchemaType.STRING,
@@ -108,7 +108,7 @@ export const DavibankProfile: TenantProfile = {
             description: 'Ruta completa del archivo procesado en el sistema.',
           },
           cuentaDepositoJudicial: {
-            type: SchemaType.NUMBER,
+            type: SchemaType.STRING,
             description:
               'Número de cuenta de depósito judicial detectada en el oficio.',
           },
@@ -356,7 +356,7 @@ export const DavibankProfile: TenantProfile = {
     - OFICIO EMBARGO A DESEMBARGAR (oficioEmbargoADesembargar): En desembargos, extraer SOLAMENTE el número del oficio, resolución o acto administrativo a dejar sin efecto. NO incluir fechas, texto adicional ni palabras como "RESOLUCION NO.", "OFICIO", "DEL". Solo dígitos. Ejemplo: si el texto dice "dejar sin efecto el oficio 1128 del 26 de febrero de 2025", capturar únicamente: "1128". Máximo 23 caracteres numéricos.
     - TIPO REQUERIMIENTO: Identificar si requiere atención diferente y clasificar en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR. Si no hay, usar "0".
     - CUENTAS ESPECÍFICAS: Limpiar guiones o espacios. Máximo 12 caracteres numéricos. Si no se encuentra cuenta específica, usar "0".
-    - CUENTA DEPOSITO JUDICIAL: Extraer la cuenta de depósito judicial (suele estar asociada a la frase "depósito judicial"). Debe ser numérica, de máximo 12 caracteres. Si no se encuentra, retornar el número 0.
+    - CUENTA DEPOSITO JUDICIAL: Extraer la cuenta de depósito judicial (suele estar asociada a la frase "depósito judicial"). Debe ser numérica, de máximo 12 caracteres. Si no se encuentra, retornar "0".
     - NOMBRE BANCO DEPOSITO JUDICIAL: Extraer el nombre de la entidad bancaria asignada para los depósitos judiciales si se menciona (ej. "BANCO AGRARIO..."). Debe ser alfanumérico, de máximo 40 caracteres, y siempre en MAYÚSCULAS. Si no se encuentra, retornar "0".
     - PRODUCTOS A FUTURO: Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO" (o "0" si no se menciona en absoluto).
     - TIPO DOCUMENTO RECIBIDO EMAIL: Clasificar el tipo de documento o correo dentro de las opciones permitidas: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
@@ -366,7 +366,7 @@ export const DavibankProfile: TenantProfile = {
     - PORCENTAJE: Solo el número, sin signo %. Si no hay, usar "0".
     - TIPO RESPUESTA: Priorizar "Email" si existe un correo en el texto o si no se especifica método físico/link.
     - DESEMBARGOS: No extraigas valores de embargo ni cuentas si el documento es un levantamiento de medida.
-    - NOMBRE OFICIO FINAL (nombreOficioFinal): Construir con la siguiente estructura estricta: "{numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}". Este número es el DEL OFICIO/EXPEDIENTE, NO el radicado. Extraer el número del documento con prioridad: 1) EXPEDIENTE, 2) OFICIO, 3) COMUNICADO. Máximo 23 dígitos, solo números. Extraer la fecha del oficio o documento y formatearla como DDMMAA (6 dígitos). Los últimos 8 caracteres (4 dígitos día-mes + 4 dígitos consecutivo) se completan en post-procesamiento. Ejemplo: "20250232006224 DEL 241125 25110186". Si no se encuentra número de oficio, usar "0". Si no se encuentra fecha, usar "000000".
+    - NOMBRE OFICIO FINAL (nombreOficioFinal): Construir con la siguiente estructura estricta: "{numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}". El numeroOficio se busca SOLO bajo etiquetas explícitas como "EXPEDIENTE", "Exp.", "OFICIO No." o "COMUNICADO No." (prioridad: 1) EXPEDIENTE, 2) OFICIO, 3) COMUNICADO). Buscar patrones como "EXPEDIENTE 4686-2022" → numeroOficio = "46862022" (solo dígitos, sin guiones). CRÍTICO: numeroOficio NUNCA debe ser un número de RESOLUCIÓN (ni la que ordena embargo, ni la que ordena desembargo). En un DESEMBARGO con "EXPEDIENTE 4686-2022", "RESOLUCIÓN 1128" (embargo) y "RESOLUCIÓN 3511" (desembargo): nombreOficioFinal usa "46862022", demandados[].numeroRadicado usa "3511", oficioEmbargoADesembargar usa "1128". Si no existe una etiqueta EXPEDIENTE/OFICIO/COMUNICADO separada de las resoluciones, usar "0". Máximo 23 dígitos, solo números. Extraer la fecha del oficio o documento y formatearla como DDMMAA (6 dígitos). Los últimos 8 caracteres (4 dígitos día-mes + 4 dígitos consecutivo) se completan en post-procesamiento. Ejemplo: "46862022 DEL 141025 00000000". Si no se encuentra número de oficio, usar "0". Si no se encuentra fecha, usar "000000".
     - NÚMERO DE RADICADO POR DEMANDADO (demandados[].numeroRadicado): Para cada demandado, extraer el número de la RESOLUCIÓN DEL PROCESO ACTUAL. En documentos de DESEMBARGO: tomar el número de la RESOLUCIÓN QUE ORDENA EL DESEMBARGO (la nueva, por ejemplo "3511 DEL 14 DE OCTUBRE DE 2025" → "3511"). NUNCA usar el número de EXPEDIENTE (ese es para nombreOficioFinal) ni la resolución anterior de embargo (esa va en oficioEmbargoADesembargar). Prioridad: 1) RESOLUCIÓN DE DESEMBARGO ACTUAL, 2) RADICADO, 3) PROCESO. Máximo 23 caracteres numéricos. Si no se encuentra, usar "0".
 
     --- ESTRUCTURA DE TEXTO A PROCESAR (DESDE OCR) ---

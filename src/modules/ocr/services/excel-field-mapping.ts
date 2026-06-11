@@ -22,7 +22,7 @@ export const EXCEL_FIELD_MAP: Record<string, FieldMapping> = {
   'NO. DE RADICADO': { path: 'demandados[0].numeroRadicado', type: 'string' },
   'CUENTA BANCO AGRARIO / BANCO DEPÓSITO JUDICIAL': {
     path: 'oficio.cuentaDepositoJudicial',
-    type: 'number',
+    type: 'string',
   },
   'NOMBRE BANCO DEPÓSITO JUDICIAL': {
     path: 'oficio.nombreBancoDepositoJudicial',
@@ -121,7 +121,7 @@ export function buildDefaultPayload(): Record<string, any> {
       tipoRequerimientoInembargable: '0',
       tipoLimiteInembargabilidad: '0',
       rutaPdf: '0',
-      cuentaDepositoJudicial: 0,
+      cuentaDepositoJudicial: '0',
       nombreBancoDepositoJudicial: '0',
     },
     demandados: [
