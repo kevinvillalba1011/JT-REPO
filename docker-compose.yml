@@ -59,6 +59,8 @@ services:
       - ${SERVER_PATH_1}:/app/source/1
       - ${SERVER_PATH_2}:/app/source/2
       - ${SERVER_PATH_3}:/app/source/3
+      - ${OCR_DESTINATION_HOST_PATH:-./local/ocr-done}:/app/local/ocr-done
+      - ${EXCEL_DESTINATION_HOST_PATH:-./local/excel-done}:/app/local/excel-done
       - ./secrets:/app/secrets
     restart: 'no'
     networks:
