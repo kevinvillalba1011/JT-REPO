@@ -69,7 +69,7 @@ export const EXCEL_FIELD_MAP: Record<string, FieldMapping> = {
     type: 'string',
   },
   'SI ES CTA ESPECÍFICA, NO. DE CTA': {
-    path: 'demandados[0].cuentas[0].numeroCuentaEspecifica',
+    path: 'demandados[0].cuentas[0].numeroCuenta',
     type: 'string',
   },
   'PORCENTAJE A EMBARGAR': {
@@ -133,7 +133,7 @@ export function buildDefaultPayload(): Record<string, any> {
         cuentas: [
           {
             productosAEmbargar: '0',
-            numeroCuentaEspecifica: '0',
+            numeroCuenta: '0',
             productosFuturo: '0',
           },
         ],

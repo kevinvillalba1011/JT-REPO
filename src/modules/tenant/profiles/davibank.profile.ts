@@ -23,7 +23,7 @@ export const DavibankProfile: TenantProfile = {
     'demandados[0].numeroRadicado',
     'demandados[0].nombre',
     'demandados[0].cuentas[0].productosAEmbargar',
-    'demandados[0].cuentas[0].numeroCuentaEspecifica',
+    'demandados[0].cuentas[0].numeroCuenta',
     'demandados[0].cuentas[0].productosFuturo',
     'demandados[0].tipoAplicacion',
     'demandados[0].porcentajeAEmbargar',
@@ -167,7 +167,7 @@ export const DavibankProfile: TenantProfile = {
                     description:
                       'Productos sobre los cuales recae la medida: AHORROS, CORRIENTES, CDT, TODOS.',
                   },
-                  numeroCuentaEspecifica: {
+                  numeroCuenta: {
                     type: SchemaType.STRING,
                     description:
                       'Número del producto específico sobre el cual se aplica la medida. Máximo 12 caracteres numéricos.',
@@ -180,7 +180,7 @@ export const DavibankProfile: TenantProfile = {
                 },
                 required: [
                   'productosAEmbargar',
-                  'numeroCuentaEspecifica',
+                  'numeroCuenta',
                   'productosFuturo',
                 ],
               },
@@ -332,7 +332,7 @@ export const DavibankProfile: TenantProfile = {
 
      1. "oficio": Información general del proceso y del oficio actual (debe incluir rutaPdf, cuentaDepositoJudicial, nombreBancoDepositoJudicial).
      2. "demandados": ARRAY de objetos, UNO POR CADA demandado encontrado en el documento.
-        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuentaEspecifica, productosFuturo), tipoAplicacion, porcentajeAEmbargar, valorEmbargo.
+        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta, productosFuturo), tipoAplicacion, porcentajeAEmbargar, valorEmbargo.
         Si hay múltiples demandados, incluye todos en el array.
         Si no se especifican cuentas para un demandado, el array "cuentas" puede estar vacío [].
     3. "demandantes": ARRAY de objetos, UNO POR CADA demandante/accionante encontrado.
