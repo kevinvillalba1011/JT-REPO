@@ -159,6 +159,49 @@ export class IntegrationService {
   }
 
   /**
+   * Normalizes null values in the payload to appropriate defaults.
+   * - tipoAplicacion: null → "0"
+   * - Other string fields with null → "0"
+   * - Other number fields with null → 0
+   * - Arrays with null elements → filtered out
+   */
+  private normalizePayload(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.normalizePayload(item));
+    }
+
+    if (typeof obj !== 'object') {
+      return obj;
+    }
+
+    const normalized: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === null || value === undefined) {
+        if (key === 'tipoAplicacion') {
+          normalized[key] = '0';
+        } else {
+          normalized[key] = '0';
+        }
+      } else if (Array.isArray(value)) {
+        normalized[key] = value
+          .map((item) => this.normalizePayload(item))
+          .filter((item) => item !== null && item !== undefined);
+      } else if (typeof value === 'object') {
+        normalized[key] = this.normalizePayload(value);
+      } else {
+        normalized[key] = value;
+      }
+    }
+
+    return normalized;
+  }
+
+  /**
    * Sends JSON data to the configured target endpoint using the stored token.
    * @param finalJson payload to send
    * @param source optional source identifier (e.g., 'IA_OK', 'EXCEL_OK')
@@ -175,9 +218,7 @@ export class IntegrationService {
     try {
       const token = await this.getToken();
 
-      this.logger.log(
-        `[sendData:${source}] POST ${dataUrl} -> ${JSON.stringify(finalJson)}`,
-      );
+      const normalizedJson = this.normalizePayload(finalJson);
 
       const response = await fetch(dataUrl, {
         method: 'POST',
@@ -185,13 +226,13 @@ export class IntegrationService {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(finalJson),
+        body: JSON.stringify(normalizedJson),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.error(
-          `[sendData:${source}] Respuesta ${response.status}: ${errorText}`,
+          `[sendData:${source}] POST ${dataUrl} -> ${JSON.stringify(normalizedJson)} Respuesta ${response.status}: ${errorText}`,
         );
         return false;
       }
