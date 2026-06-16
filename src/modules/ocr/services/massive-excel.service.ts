@@ -266,10 +266,11 @@ export class MassiveExcelService {
         oficio && typeof oficio.nombreOficioFinal === 'string'
           ? oficio.nombreOficioFinal
           : '';
-      if (oficio && nombreFinal.includes('00000000')) {
+      const OFICIO_PLACEHOLDER = /00000000|MMDDconsecutivo4Digitos/;
+      if (oficio && OFICIO_PLACEHOLDER.test(nombreFinal)) {
         const { mmdd, consecutivo } = await this.dailySequence.getNext();
         oficio.nombreOficioFinal = nombreFinal.replace(
-          '00000000',
+          OFICIO_PLACEHOLDER,
           `${mmdd}${consecutivo}`,
         );
       }

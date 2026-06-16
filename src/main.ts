@@ -45,5 +45,7 @@ async function bootstrap() {
 
   await app.listen(port);
   Logger.verbose(`🚀 API listing on: ${port}/api/docs`);
+
+  Logger.verbose(`Api version: 2.0.0`);
 }
 bootstrap();

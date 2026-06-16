@@ -193,6 +193,14 @@ export class IntegrationService {
           .filter((item) => item !== null && item !== undefined);
       } else if (typeof value === 'object') {
         normalized[key] = this.normalizePayload(value);
+      } else if (
+        typeof value === 'number' &&
+        (key === 'cuentaDepositoJudicial' ||
+          key === 'numeroCuenta' ||
+          key === 'numeroId' ||
+          key === 'numeroRadicado')
+      ) {
+        normalized[key] = String(value);
       } else {
         normalized[key] = value;
       }

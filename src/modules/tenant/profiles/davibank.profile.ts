@@ -25,7 +25,7 @@ export const DavibankProfile: TenantProfile = {
     'demandados[0].cuentas[0].productosAEmbargar',
     'demandados[0].cuentas[0].numeroCuenta',
     'demandados[0].cuentas[0].productosFuturo',
-    'demandados[0].tipoAplicacion',
+    'infoCliente.tipoAplicacion',
     'demandados[0].porcentajeAEmbargar',
     'demandados[0].valorEmbargo',
     'demandantes[0].tipoId',
@@ -185,11 +185,6 @@ export const DavibankProfile: TenantProfile = {
                 ],
               },
             },
-            tipoAplicacion: {
-              type: SchemaType.STRING,
-              description:
-                'CONGELAR (Mantener, Bloquear) o DEBITAR (Consignar, Dejar a disposición).',
-            },
             porcentajeAEmbargar: {
               type: SchemaType.STRING,
               description:
@@ -207,7 +202,6 @@ export const DavibankProfile: TenantProfile = {
             'numeroRadicado',
             'nombre',
             'cuentas',
-            'tipoAplicacion',
             'porcentajeAEmbargar',
             'valorEmbargo',
           ],
@@ -304,6 +298,11 @@ export const DavibankProfile: TenantProfile = {
             description:
               'Tipo de respuesta esperado. Si no se especifica "Fisico" o "Link", seleccionar SIEMPRE "Email".',
           },
+          tipoAplicacion: {
+            type: SchemaType.STRING,
+            description:
+              'CONGELAR (Mantener, Bloquear) o DEBITAR (Consignar, Dejar a disposición).',
+          },
           vinculoCliente: {
             type: SchemaType.STRING,
             description:
@@ -314,6 +313,7 @@ export const DavibankProfile: TenantProfile = {
           'tipoDocumentoRecibidoEmail',
           'codigoAlcance',
           'codigoAplicacion',
+          'tipoAplicacion',
           'tipoRespuesta',
           'vinculoCliente',
         ],
@@ -332,13 +332,15 @@ export const DavibankProfile: TenantProfile = {
 
      1. "oficio": Información general del proceso y del oficio actual (debe incluir rutaPdf, cuentaDepositoJudicial, nombreBancoDepositoJudicial).
      2. "demandados": ARRAY de objetos, UNO POR CADA demandado encontrado en el documento.
-        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta, productosFuturo), tipoAplicacion, porcentajeAEmbargar, valorEmbargo.
+        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta, productosFuturo), porcentajeAEmbargar, valorEmbargo.
+        CRÍTICO — nombres exactos de campos en cuentas: "numeroCuenta" (NO "numeroCuentaEspecifica"), "productosFuturo" (NO "productosAFuturo").
         Si hay múltiples demandados, incluye todos en el array.
         Si no se especifican cuentas para un demandado, el array "cuentas" puede estar vacío [].
     3. "demandantes": ARRAY de objetos, UNO POR CADA demandante/accionante encontrado.
        Cada uno con: tipoId, numeroId, nombre.
     4. "ente": Información del ente embargante (nombreSecretarioFuncionario, nombreEnteEmbargante, ciudad, correosElectronicos como ARRAY, linkColocacionRespuesta, tipoProceso).
-    5. "infoCliente": Información del cliente (fechaHoraRecepcionCorreo, tipoDocumentoRecibidoEmail como ARRAY, codigoAlcance, codigoAplicacion, tipoRespuesta, vinculoCliente).
+    5. "infoCliente": Información del cliente (fechaHoraRecepcionCorreo, tipoDocumentoRecibidoEmail como ARRAY, codigoAlcance, codigoAplicacion, tipoAplicacion, tipoRespuesta, vinculoCliente).
+       tipoAplicacion va SIEMPRE en "infoCliente", NO en "demandados".
 
     --- REGLAS DE ORO DE CLASIFICACIÓN ---
     Para determinar 'oficio.tipoOficio', utiliza estas señales semánticas:

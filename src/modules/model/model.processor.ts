@@ -120,15 +120,17 @@ export class ModelProcessor extends WorkerHost {
       );
       oficio.nombreOficioInicial = nombreOficioInicial;
 
-      // Post-procesar nombreOficioFinal: reemplazar placeholder "00000000" con fecha proceso + consecutivo
+      // Post-procesar nombreOficioFinal: reemplazar placeholder con fecha proceso + consecutivo.
+      // Gemini puede devolver "00000000" o literalmente "MMDDconsecutivo4Digitos".
+      const OFICIO_PLACEHOLDER = /00000000|MMDDconsecutivo4Digitos/;
       let nombreOficioFinal =
         typeof oficio.nombreOficioFinal === 'string'
           ? oficio.nombreOficioFinal
           : '';
-      if (nombreOficioFinal.includes('00000000')) {
+      if (OFICIO_PLACEHOLDER.test(nombreOficioFinal)) {
         const { mmdd, consecutivo } = await this.dailySequence.getNext();
         nombreOficioFinal = nombreOficioFinal.replace(
-          '00000000',
+          OFICIO_PLACEHOLDER,
           `${mmdd}${consecutivo}`,
         );
       }
