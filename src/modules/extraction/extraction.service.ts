@@ -47,7 +47,7 @@ export class ExtractionService implements OnApplicationBootstrap {
   }
 
   private async recoverPendingDocuments() {
-    this.logger.log('Checking for pending documents to recover...');
+    this.logger.verbose('Checking for pending documents to recover...');
 
     // 1. Recover OCR (both EN_COLA and PROCESANDO)
     const pendingOcr = [
@@ -162,7 +162,8 @@ export class ExtractionService implements OnApplicationBootstrap {
       }
 
       // Check duplicates by file name
-      const existingDoc = await this.documentRepository.findByFileName(fileName);
+      const existingDoc =
+        await this.documentRepository.findByFileName(fileName);
 
       if (existingDoc) {
         const duplicatesPath = this.configService.get<string>(
@@ -231,7 +232,7 @@ export class ExtractionService implements OnApplicationBootstrap {
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async cleanupOldFiles() {
-    this.logger.log('Starting daily cleanup of old files...');
+    this.logger.verbose('Starting daily cleanup of old files...');
     const retentionDays = this.configService.get<number>(
       'FILE_RETENTION_DAYS',
       7,

@@ -50,7 +50,7 @@ export class OcrProcessor extends WorkerHost {
 
   async process(job: Job<any, any, string>): Promise<any> {
     const { documentId, filePath, originalPath } = job.data;
-    this.logger.log(`Processing Job ${job.id} for Document ${documentId}`);
+    this.logger.verbose(`Processing Job ${job.id} for Document ${documentId}`);
 
     // Verificar si el archivo existe antes de empezar
     if (!fs.existsSync(filePath)) {

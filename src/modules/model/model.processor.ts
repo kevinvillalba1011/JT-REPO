@@ -46,7 +46,7 @@ export class ModelProcessor extends WorkerHost {
 
   async process(job: Job<any, any, string>): Promise<any> {
     const { documentId, filePath, text, originalPath } = job.data;
-    this.logger.log(
+    this.logger.verbose(
       `Processing Model Job ${job.id} for Document ${documentId}`,
     );
 

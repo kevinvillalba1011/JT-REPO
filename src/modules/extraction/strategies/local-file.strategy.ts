@@ -25,7 +25,7 @@ export class LocalFileStrategy implements FileExtractorStrategy {
   }
 
   async extractFiles(destinationFolder: string): Promise<ExtractedFile[]> {
-    this.logger.log(
+    this.logger.verbose(
       `Scanning local folders recursively: ${this.sourcePaths.join(', ')}`,
     );
     const extractedFiles: ExtractedFile[] = [];

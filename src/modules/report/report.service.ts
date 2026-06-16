@@ -19,7 +19,7 @@ export class ReportService {
 
   @Cron(process.env.CRON_REPORT_SCHEDULE || '0 23 * * *')
   async handleReport() {
-    this.logger.log('Starting Report Generation...');
+    this.logger.verbose('Starting Report Generation...');
 
     const docs = await this.documentRepository.findByState(DocumentState.IA_OK);
     this.logger.log(`Found ${docs.length} documents to report.`);

@@ -46,7 +46,7 @@ export class GeminiService {
     fileBuffer?: Buffer,
     mimeType?: string,
   ): Promise<any> {
-    this.logger.log(
+    this.logger.verbose(
       'Starting data extraction via Gemini API with Structured Outputs',
     );
 

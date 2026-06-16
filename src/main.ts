@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import * as path from 'path';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { LogLevel, ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
@@ -14,7 +14,14 @@ async function bootstrap() {
     );
   }
 
-  const app = await NestFactory.create(AppModule);
+  const logLevelsEnv = process?.env?.LOG_LEVELS || 'log,verbose,error,warn';
+  const logLevels = logLevelsEnv
+    .split(',')
+    .map((level) => level.trim()) as LogLevel[];
+
+  const app = await NestFactory.create(AppModule, {
+    logger: logLevels,
+  });
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
 
@@ -37,9 +44,6 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(port);
-  console.log(`🚀 API listing on: http://localhost:${port}`);
-  console.log(
-    `📖 Swagger docs available on: http://localhost:${port}/api/docs`,
-  );
+  Logger.verbose(`🚀 API listing on: ${port}/api/docs`);
 }
 bootstrap();

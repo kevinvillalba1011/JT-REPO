@@ -33,7 +33,7 @@ export class MassiveExcelService {
   ) {}
 
   async process(filePath: string, fileName: string): Promise<BatchResult> {
-    this.logger.log(
+    this.logger.verbose(
       `[1/4] Iniciando procesamiento de Excel masivo: ${fileName}`,
     );
 
