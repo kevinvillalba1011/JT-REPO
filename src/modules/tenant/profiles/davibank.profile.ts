@@ -24,7 +24,7 @@ export const DavibankProfile: TenantProfile = {
     'demandados[0].nombre',
     'demandados[0].cuentas[0].productosAEmbargar',
     'demandados[0].cuentas[0].numeroCuenta',
-    'demandados[0].cuentas[0].productosFuturo',
+    'demandados[0].productosFuturo',
     'infoCliente.tipoAplicacion',
     'demandados[0].porcentajeAEmbargar',
     'demandados[0].valorEmbargo',
@@ -172,18 +172,17 @@ export const DavibankProfile: TenantProfile = {
                     description:
                       'Número del producto específico sobre el cual se aplica la medida. Máximo 12 caracteres numéricos.',
                   },
-                  productosFuturo: {
-                    type: SchemaType.STRING,
-                    description:
-                      'Indicar estrictamente "SI" o "NO" si el oficio menciona embargar productos futuros.',
-                  },
                 },
                 required: [
                   'productosAEmbargar',
                   'numeroCuenta',
-                  'productosFuturo',
                 ],
               },
+            },
+            productosFuturo: {
+              type: SchemaType.STRING,
+              description:
+                'Indicar estrictamente "SI" o "NO" si el oficio menciona embargar productos futuros. Va a nivel del demandado, NO dentro de cuentas.',
             },
             porcentajeAEmbargar: {
               type: SchemaType.STRING,
@@ -202,6 +201,7 @@ export const DavibankProfile: TenantProfile = {
             'numeroRadicado',
             'nombre',
             'cuentas',
+            'productosFuturo',
             'porcentajeAEmbargar',
             'valorEmbargo',
           ],
@@ -332,8 +332,8 @@ export const DavibankProfile: TenantProfile = {
 
      1. "oficio": Información general del proceso y del oficio actual (debe incluir rutaPdf, cuentaDepositoJudicial, nombreBancoDepositoJudicial).
      2. "demandados": ARRAY de objetos, UNO POR CADA demandado encontrado en el documento.
-        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta, productosFuturo), porcentajeAEmbargar, valorEmbargo.
-        CRÍTICO — nombres exactos de campos en cuentas: "numeroCuenta" (NO "numeroCuentaEspecifica"), "productosFuturo" (NO "productosAFuturo").
+        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta), productosFuturo, porcentajeAEmbargar, valorEmbargo.
+        CRÍTICO — "productosFuturo" va a nivel del demandado, NO dentro de cada cuenta. Nombre exacto del campo en cuentas: "numeroCuenta" (NO "numeroCuentaEspecifica").
         Si hay múltiples demandados, incluye todos en el array.
         Si no se especifican cuentas para un demandado, el array "cuentas" puede estar vacío [].
     3. "demandantes": ARRAY de objetos, UNO POR CADA demandante/accionante encontrado.
@@ -361,7 +361,7 @@ export const DavibankProfile: TenantProfile = {
     - CUENTAS ESPECÍFICAS: Limpiar guiones o espacios. Máximo 12 caracteres numéricos. Si no se encuentra cuenta específica, usar "0".
     - CUENTA DEPOSITO JUDICIAL: Extraer la cuenta de depósito judicial (suele estar asociada a la frase "depósito judicial"). Debe ser numérica, de máximo 12 caracteres. Si no se encuentra, retornar "0".
     - NOMBRE BANCO DEPOSITO JUDICIAL: Extraer el nombre de la entidad bancaria asignada para los depósitos judiciales si se menciona (ej. "BANCO AGRARIO..."). Debe ser alfanumérico, de máximo 40 caracteres, y siempre en MAYÚSCULAS. Si no se encuentra, retornar "0".
-    - PRODUCTOS A FUTURO: Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO" (o "0" si no se menciona en absoluto).
+    - PRODUCTOS A FUTURO (productosFuturo): Va a nivel del demandado, NO dentro de cuentas. Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO" (o "0" si no se menciona en absoluto).
     - TIPO DOCUMENTO RECIBIDO EMAIL: Clasificar el tipo de documento o correo dentro de las opciones permitidas: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
     - TIPO ID: 1 solo carácter. Si dice CC o Cédula de Ciudadanía usa "C", si dice NIT usa "N", si dice TI usa "T", si dice E usa "E", si dice P usa "P".
     - CORREOS ELECTRÓNICOS: Extraer todas las direcciones válidas que contengan @ como ARRAY. Si no hay, retornar [].

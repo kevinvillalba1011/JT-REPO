@@ -77,7 +77,7 @@ export const EXCEL_FIELD_MAP: Record<string, FieldMapping> = {
     type: 'string',
   },
   'PRODUCTOS A FUTURO': {
-    path: 'demandados[0].cuentas[0].productosFuturo',
+    path: 'demandados[0].productosFuturo',
     type: 'string',
   },
   'TIPO DOCUMENTO RECIBIDO EN EMAIL': {
@@ -134,9 +134,9 @@ export function buildDefaultPayload(): Record<string, any> {
           {
             productosAEmbargar: '0',
             numeroCuenta: '0',
-            productosFuturo: '0',
           },
         ],
+        productosFuturo: '0',
         porcentajeAEmbargar: '0',
         valorEmbargo: 0,
       },

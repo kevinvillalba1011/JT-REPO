@@ -121,7 +121,7 @@ export class OcrProcessor extends WorkerHost {
         await this.documentRepository.updateState(
           documentId,
           DocumentState.EXCEL_OK,
-          { ocrText: summaryText },
+          { ocrText: summaryText, lotesEnviados: batchResult.lotesEnviados },
         );
 
         this.logger.log(

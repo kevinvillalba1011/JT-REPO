@@ -33,7 +33,8 @@ model Document {
   md5Hash   String?       @map("hash_md5")
   state     DocumentState @map("estado")
   ocrText   String?       @map("texto_ocr") @db.Text
-  jsonModel Json?         @map("json_modelo")
+  jsonModel    Json?         @map("json_modelo")
+  lotesEnviados Json?        @map("lotes_enviados")
 
   stateLogs DocumentStateLog[]
 
