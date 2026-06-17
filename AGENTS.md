@@ -21,7 +21,7 @@ Si tu tarea toca varios temas, lee todos los documentos relevantes antes de empe
 
 - **Linting**: ejecutar `pnpm lint` después de cualquier modificación de código. No dejar errores de lint pendientes.
 - **Path Aliases**: usar siempre `@/*` para imports internos (mapeado a `src/*` en `tsconfig.json`).
-- **Memory Safety**: para archivos masivos (Excel/CSV), usar streaming (`exceljs` stream API).
+- **Memory Safety**: para archivos masivos (Excel/CSV), usar el lector **no-streaming** de exceljs (`new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath)`). **No usar** `stream.xlsx.WorkbookReader` — tiene un bug conocido donde las celdas de texto llegan como `{sharedString: N}` sin resolver cuando `sharedStrings.xml` aparece después de las hojas dentro del zip. Las plantillas son pequeñas (cientos de filas), cargarlas completas en memoria es seguro. Ver `.agents/decisions.md` para detalle.
 - **Excel/CSV Bypass**: `.xlsx`/`.xls`/`.csv` deben ir directo a DB, omitiendo OCR/Gemini.
 - **Idempotency**: procesamiento masivo debe limpiar registros previos del mismo archivo antes de re-insertar.
 - **🚫 Nunca ejecutar comandos Prisma que apliquen cambios a la DB** (`migrate dev/deploy`, `db push`). Ver [`.agents/instructions.md`](.agents/instructions.md) para el flujo correcto.
