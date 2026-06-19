@@ -161,43 +161,6 @@ export class ExtractionService implements OnApplicationBootstrap {
         return;
       }
 
-      // Check duplicates by file name
-      const existingDoc =
-        await this.documentRepository.findByFileName(fileName);
-
-      if (existingDoc) {
-        const duplicatesPath = this.configService.get<string>(
-          'DUPLICATES_PATH',
-          './local/duplicates',
-        );
-
-        try {
-          await fs.promises.access(duplicatesPath);
-        } catch {
-          await fs.promises.mkdir(duplicatesPath, { recursive: true });
-        }
-
-        const newFileName = `${Date.now()}_${fileName}`;
-        const destination = path.join(duplicatesPath, newFileName);
-
-        this.logger.warn(
-          `Duplicate file found (Name: ${fileName}). Recording in DB and moving to duplicates folder.`,
-        );
-
-        await this.documentRepository.create({
-          fileName: newFileName,
-          state: DocumentState.DUPLICADO,
-        });
-
-        try {
-          await fs.promises.rename(filePath, destination);
-        } catch (err) {
-          await fs.promises.copyFile(filePath, destination);
-          await fs.promises.unlink(filePath);
-        }
-        return;
-      }
-
       // Insert new Document
       const newDoc = await this.documentRepository.create({
         fileName: fileName,

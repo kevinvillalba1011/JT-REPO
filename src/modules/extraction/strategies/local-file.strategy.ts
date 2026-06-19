@@ -6,17 +6,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
-import { DocumentRepository } from '../../documents/repositories/document.repository';
 
 @Injectable()
 export class LocalFileStrategy implements FileExtractorStrategy {
   private readonly logger = new Logger(LocalFileStrategy.name);
   private readonly sourcePaths: string[];
 
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly documentRepository: DocumentRepository,
-  ) {
+  constructor(private readonly configService: ConfigService) {
     const paths = this.configService.get<string>(
       'LOCAL_SOURCE_PATHS',
       './local/source',
@@ -80,17 +76,6 @@ export class LocalFileStrategy implements FileExtractorStrategy {
       if (allowedExtensions.length > 0 && !allowedExtensions.includes(ext)) {
         this.logger.debug(
           `Skipping file ${file.name}: Extension ${ext} not allowed.`,
-        );
-        continue;
-      }
-
-      // Check DB to avoid copying if it already exists
-      const existingDoc = await this.documentRepository.findByFileName(
-        file.name,
-      );
-      if (existingDoc) {
-        this.logger.debug(
-          `File ${file.name} already exists in DB. Skipping copy.`,
         );
         continue;
       }

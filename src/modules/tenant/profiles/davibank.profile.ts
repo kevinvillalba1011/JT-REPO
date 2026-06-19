@@ -86,7 +86,7 @@ export const DavibankProfile: TenantProfile = {
           observaciones: {
             type: SchemaType.STRING,
             description:
-              'Si el texto contiene alguna de estas palabras clave: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado, certificación. Se debe extraer como: "Requerimos de su colaboración [palabras_encontradas]". De lo contrario, "0".',
+              'Si el texto contiene una o más de estas palabras clave: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado, certificación. Se deben capturar y concatenar todas las que se encuentren separadas por comas. Si no se encuentra ninguna, usar "0".',
           },
           tipoRequerimiento: {
             type: SchemaType.STRING,
@@ -173,10 +173,7 @@ export const DavibankProfile: TenantProfile = {
                       'Número del producto específico sobre el cual se aplica la medida. Máximo 12 caracteres numéricos.',
                   },
                 },
-                required: [
-                  'productosAEmbargar',
-                  'numeroCuenta',
-                ],
+                required: ['productosAEmbargar', 'numeroCuenta'],
               },
             },
             productosFuturo: {
@@ -301,7 +298,7 @@ export const DavibankProfile: TenantProfile = {
           tipoAplicacion: {
             type: SchemaType.STRING,
             description:
-              'CONGELAR (Mantener, Bloquear) o DEBITAR (Consignar, Dejar a disposición).',
+              'Informacion que trae el documento acorde a la instrucción del oficio y se debe interpretar de la siguiente manera: CONGELAR: Mantener los recursos en la cuenta, Congelar, Congelar Recursos, Bloquear. DEBITAR: Consignar, Debitar, Dejar a disposicion. Si no se encuentra ninguna de estas palabras clave, dejar "0".',
           },
           vinculoCliente: {
             type: SchemaType.STRING,
@@ -349,7 +346,7 @@ export const DavibankProfile: TenantProfile = {
     3. ALCANCE O REQUERIMIENTO: Busca "REITERACIÓN", "REQUERIR", "MANTENIMIENTO", "OFICIAR", "INCIDENTE", "SANCIÓN", "DESACATO", "NOTIFICAR", o "AMPLIAR".
 
     --- REGLAS ESTRICTAS DE EXTRACCIÓN Y LIMPIEZA ---
-    - OBSERVACIONES: Si dentro del texto del oficio se encuentra alguna de estas palabras clave: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado o certificación; entonces el campo debe ser "Requerimos de su colaboración" concatenado con las palabras encontradas (ej. "Requerimos de su colaboración Nomina, Pagador"). Si no se encuentra ninguna, usar "0".
+    - OBSERVACIONES: Si dentro del texto del oficio se encuentra una o más de estas palabras clave: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado o certificación; entonces se deben capturar TODAS las que se encuentren y concatenarlas separadas por comas (ej. "Nomina, Pagador, Información"). Si no se encuentra ninguna, usar "0".
     - TIPO PROCESO: Identificar si es "JUDICIAL", "COACTIVO" o "EJECUTIVO". Ubicarlo exclusivamente en "ente.tipoProceso". No debe ir en "oficio.tipoProceso".
     - VALORES POR DEFECTO O FALLBACK (OBLIGATORIO): Si cualquier campo de tipo texto o número (ej. observaciones, valorEmbargo, porcentajeAEmbargar, vinculoCliente, codigoAlcance, codigoAplicacion, oficioEmbargoADesembargar, etc.) no es encontrado, no aplica, o está vacío en el documento, se debe rellenar estrictamente con "0" (como string o número 0 según el tipo). NO uses null ni strings vacíos (""). Los arrays vacíos que no tengan elementos detectados se deben retornar como [] (arreglos vacíos normales).
     - NÚMEROS DE IDENTIFICACIÓN: Remover formato. Extraer exclusivamente dígitos. Truncar si supera 12 caracteres.
