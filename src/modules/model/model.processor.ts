@@ -11,6 +11,7 @@ import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
 import { IntegrationService } from '../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
+import { nowBogotaISOString } from '@/common/utils/date.util';
 
 @Injectable()
 @Processor('cola_modelo', {
@@ -104,8 +105,8 @@ export class ModelProcessor extends WorkerHost {
         `Model Success. Result keys: ${Object.keys(resultJson).join(', ')}`,
       );
 
-      // Inyectar fechas manualmente en formato ISO 8601
-      const nowIso = new Date().toISOString();
+      // Inyectar fechas manualmente en formato ISO 8601, hora de Bogotá (UTC-5)
+      const nowIso = nowBogotaISOString();
 
       if (!resultJson.oficio || typeof resultJson.oficio !== 'object') {
         resultJson.oficio = {};
@@ -205,7 +206,7 @@ export class ModelProcessor extends WorkerHost {
         {
           jsonModel: {
             error: errMsg,
-            timestamp: new Date().toISOString(),
+            timestamp: nowBogotaISOString(),
           },
         },
       );
@@ -236,7 +237,7 @@ export class ModelProcessor extends WorkerHost {
           jsonModel: {
             error: err.message,
             errorType: 'permanent_failure',
-            timestamp: new Date().toISOString(),
+            timestamp: nowBogotaISOString(),
             attempts: job.attemptsMade,
           },
         },

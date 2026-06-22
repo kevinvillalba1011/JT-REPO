@@ -22,6 +22,7 @@ export class OcrProcessor extends WorkerHost {
   private readonly logger = new Logger(OcrProcessor.name);
   private readonly ocrPath: string;
   private readonly excelDestinationPath: string;
+  private readonly unreadablePath: string;
   private readonly strategies: TextExtractorStrategy[];
 
   constructor(
@@ -43,6 +44,13 @@ export class OcrProcessor extends WorkerHost {
       this.configService.get<string>(
         'EXCEL_DESTINATION_PATH',
         './local/excel-done',
+      ),
+    );
+    this.unreadablePath = path.resolve(
+      process.cwd(),
+      this.configService.get<string>(
+        'OCR_UNREADABLE_PATH',
+        './local/ocr-unreadable',
       ),
     );
     this.strategies = [this.docAiStrategy, this.excelStrategy];
@@ -170,9 +178,30 @@ export class OcrProcessor extends WorkerHost {
 
       if (!extractedText.trim()) {
         this.logger.warn('Document is unreadable by OCR (Empty text)');
+
+        try {
+          await fs.promises.access(this.unreadablePath);
+        } catch {
+          await fs.promises.mkdir(this.unreadablePath, { recursive: true });
+        }
+
+        const unreadableBaseName = path.basename(filePath);
+        const unreadableDestination = path.join(
+          this.unreadablePath,
+          unreadableBaseName,
+        );
+
+        try {
+          await fs.promises.rename(filePath, unreadableDestination);
+        } catch {
+          await fs.promises.copyFile(filePath, unreadableDestination);
+          await fs.promises.unlink(filePath);
+        }
+
         await this.documentRepository.updateState(
           documentId,
           DocumentState.OCR_UNREADABLE,
+          { ocrText: `Archivo movido a revisión: ${unreadableDestination}` },
         );
         return;
       }

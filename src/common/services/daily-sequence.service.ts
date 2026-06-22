@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
+import { nowBogotaDate } from '@/common/utils/date.util';
 
 @Injectable()
 export class DailySequenceService {
@@ -12,10 +13,12 @@ export class DailySequenceService {
    * Retorna el objeto { mmdd, consecutivo } listo para usar en nombreOficioFinal.
    */
   async getNext(): Promise<{ mmdd: string; consecutivo: string }> {
-    const now = new Date();
+    // Usamos los accesores UTC sobre la fecha ya desplazada a Bogotá para no
+    // depender de la zona horaria configurada en el sistema/contenedor.
+    const now = nowBogotaDate();
     const mmdd =
-      String(now.getMonth() + 1).padStart(2, '0') +
-      String(now.getDate()).padStart(2, '0');
+      String(now.getUTCMonth() + 1).padStart(2, '0') +
+      String(now.getUTCDate()).padStart(2, '0');
 
     const todayStr = now.toISOString().slice(0, 10);
 

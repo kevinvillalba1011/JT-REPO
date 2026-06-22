@@ -6,6 +6,7 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import { IntegrationService } from '../../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
 import { mapRowToPayload, SUPPORTED_TIPOS_OFICIO } from './excel-field-mapping';
+import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
 
 export interface BatchResult {
   loteId: string;
@@ -119,6 +120,7 @@ export class MassiveExcelService {
         tipoOficio: tipoOficioMasivo,
         numeroFila: r.numeroFila,
         payload: r.payload,
+        createdAt: nowBogotaDate(),
       }));
 
       for (let i = 0; i < data.length; i += BATCH_SIZE) {
@@ -232,7 +234,7 @@ export class MassiveExcelService {
     });
 
     const tipoOficio = this.resolveTipoOficio(sheetName, filePath);
-    const fechaProcesamiento = new Date().toISOString();
+    const fechaProcesamiento = nowBogotaISOString();
 
     if (dataRows.length === 0) {
       return { tipoOficio, rows: [] };

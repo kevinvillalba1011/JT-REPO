@@ -85,17 +85,26 @@ export class LocalFileStrategy implements FileExtractorStrategy {
       const destinationPath = path.join(destinationFolder, uniqueName);
 
       try {
-        fs.copyFileSync(fullPath, destinationPath);
+        // Mover (no copiar) el archivo fuera de la carpeta fuente: si solo se
+        // copia, el archivo original sigue existiendo ahí y el siguiente tick
+        // del cron lo vuelve a recoger como si fuera nuevo, generando
+        // registros y jobs duplicados indefinidamente.
+        try {
+          fs.renameSync(fullPath, destinationPath);
+        } catch {
+          fs.copyFileSync(fullPath, destinationPath);
+          fs.unlinkSync(fullPath);
+        }
         this.logger.log(
-          `Copied file ${fullPath} to ${destinationFolder} as ${uniqueName}`,
+          `Moved file ${fullPath} to ${destinationFolder} as ${uniqueName}`,
         );
         extractedFiles.push({
           name: uniqueName,
           originalPath: fullPath,
           destinationPath,
         });
-      } catch (err) {
-        this.logger.error(`Failed to copy file ${fullPath}: ${err.message}`);
+      } catch (err: any) {
+        this.logger.error(`Failed to move file ${fullPath}: ${err.message}`);
       }
     }
   }

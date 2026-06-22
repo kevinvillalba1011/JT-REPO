@@ -5,6 +5,7 @@ import { Document, DocumentState } from '@prisma/client';
 import { LocalReportStrategy } from './strategies/local-report.strategy';
 import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
+import { nowBogotaDate, formatBogotaDate } from '@/common/utils/date.util';
 
 @Injectable()
 export class ReportService {
@@ -56,10 +57,10 @@ export class ReportService {
       }
     }
 
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
+    const now = nowBogotaDate();
+    const day = String(now.getUTCDate()).padStart(2, '0');
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const year = now.getUTCFullYear();
     const dateStr = `${day}${month}${year}`;
     const fileName = `${dateStr}/reporte.csv`;
 
@@ -102,8 +103,8 @@ export class ReportService {
       doc.id,
       doc.fileName,
       doc.state,
-      doc.createdAt.toISOString(),
-      doc.updatedAt.toISOString(),
+      formatBogotaDate(doc.createdAt),
+      formatBogotaDate(doc.updatedAt),
       doc.md5Hash,
     ];
 

@@ -88,6 +88,14 @@ export class GeminiService {
         const result = await model.generateContent(parts);
         const generatedText = result.response.text();
 
+        const usage = result.response.usageMetadata;
+        if (usage) {
+          this.logger.log(
+            `[COSTO] modelo=${modelId} promptTokens=${usage.promptTokenCount} ` +
+              `outputTokens=${usage.candidatesTokenCount} totalTokens=${usage.totalTokenCount}`,
+          );
+        }
+
         this.logger.debug(
           `Gemini Result multi-modal [via ${modelId}]: ${generatedText.substring(0, 100)}...`,
         );

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { Document, DocumentState, Prisma } from '@prisma/client';
+import { nowBogotaDate } from '@/common/utils/date.util';
 
 @Injectable()
 export class DocumentRepository {
@@ -14,10 +15,13 @@ export class DocumentRepository {
       return await this.prisma.document.create({
         data: {
           ...data,
+          createdAt: nowBogotaDate(),
+          updatedAt: nowBogotaDate(),
           stateLogs: {
             create: {
               previousState: DocumentState.INGRESADO,
               newState: data.state,
+              createdAt: nowBogotaDate(),
             },
           },
         },
@@ -53,10 +57,12 @@ export class DocumentRepository {
       data: {
         state: state,
         ...extraData,
+        updatedAt: nowBogotaDate(),
         stateLogs: {
           create: {
             previousState: currentDoc ? currentDoc.state : null,
             newState: state,
+            createdAt: nowBogotaDate(),
           },
         },
       },
@@ -116,8 +122,14 @@ export class DocumentRepository {
   }
 
   async countProcessedToday(): Promise<number> {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const bogotaNow = nowBogotaDate();
+    const startOfDay = new Date(
+      Date.UTC(
+        bogotaNow.getUTCFullYear(),
+        bogotaNow.getUTCMonth(),
+        bogotaNow.getUTCDate(),
+      ),
+    );
     return this.prisma.document.count({
       where: {
         state: DocumentState.IA_OK,
