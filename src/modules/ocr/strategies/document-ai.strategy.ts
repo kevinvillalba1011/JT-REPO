@@ -48,6 +48,10 @@ export class DocumentAiStrategy implements TextExtractorStrategy {
         content: encodedImage,
         mimeType,
       },
+      // Modo "imageless": sube el límite de páginas por documento de 15 a 30.
+      // Sin esto, Document AI rechaza con INVALID_ARGUMENT cualquier PDF de
+      // más de 15 páginas.
+      imagelessMode: true,
     };
 
     this.logger.log(`Calling Document AI: ${resourceName}`);
