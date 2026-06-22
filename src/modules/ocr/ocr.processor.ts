@@ -244,10 +244,10 @@ export class OcrProcessor extends WorkerHost {
           originalPath: originalPath || filePath,
         },
         {
-          attempts: 6,
+          attempts: 3,
           backoff: {
             type: 'exponential',
-            delay: 15000, // Waits 15s -> 30s -> 60s -> 120s if model rate limit hits
+            delay: 15000, // Waits 15s -> 30s -> 60s if model rate limit hits
           },
         },
       );

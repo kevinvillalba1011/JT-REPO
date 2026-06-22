@@ -12,6 +12,7 @@ import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interfac
 import { IntegrationService } from '../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
 import { nowBogotaISOString } from '@/common/utils/date.util';
+import { isPermanentError } from '@/common/utils/error-classifier.util';
 
 @Injectable()
 @Processor('cola_modelo', {
@@ -25,6 +26,7 @@ import { nowBogotaISOString } from '@/common/utils/date.util';
 export class ModelProcessor extends WorkerHost {
   private readonly logger = new Logger(ModelProcessor.name);
   private readonly ocrDestinationPath: string;
+  private readonly unreadablePath: string;
 
   constructor(
     private readonly documentRepository: DocumentRepository,
@@ -41,6 +43,13 @@ export class ModelProcessor extends WorkerHost {
       this.configService.get<string>(
         'OCR_DESTINATION_PATH',
         './local/ocr-done',
+      ),
+    );
+    this.unreadablePath = path.resolve(
+      process.cwd(),
+      this.configService.get<string>(
+        'OCR_UNREADABLE_PATH',
+        './local/ocr-unreadable',
       ),
     );
   }
@@ -199,6 +208,29 @@ export class ModelProcessor extends WorkerHost {
         error instanceof Error ? error.stack : '',
       );
 
+      // Errores permanentes (argumento inválido, credenciales, etc.) nunca
+      // van a cambiar con un reintento: cortamos de inmediato en vez de
+      // gastar los intentos restantes y llamadas extra a Gemini.
+      if (isPermanentError(error)) {
+        const movedTo = await this.moveToReviewFolder(filePath);
+        await this.documentRepository.updateState(
+          documentId,
+          DocumentState.MODEL_ERROR,
+          {
+            jsonModel: {
+              error: errMsg,
+              errorType: 'permanent_no_retry',
+              timestamp: nowBogotaISOString(),
+              ...(movedTo ? { archivoMovido: movedTo } : {}),
+            },
+          },
+        );
+        this.logger.warn(
+          `Document ${documentId}: error permanente detectado, no se reintentará.`,
+        );
+        return;
+      }
+
       // Update state to MODEL_ERROR before re-throwing for BullMQ retries
       await this.documentRepository.updateState(
         documentId,
@@ -223,10 +255,12 @@ export class ModelProcessor extends WorkerHost {
 
   @OnWorkerEvent('failed')
   async onFailed(job: Job, err: any) {
-    const { documentId } = job.data;
+    const { documentId, filePath } = job.data;
     this.logger.error(
       `Job ${job.id} (Document ${documentId}) has failed permanently with ${err.message}`,
     );
+
+    const movedTo = await this.moveToReviewFolder(filePath);
 
     // Update document state to MODEL_ERROR when all retries are exhausted
     try {
@@ -239,6 +273,7 @@ export class ModelProcessor extends WorkerHost {
             errorType: 'permanent_failure',
             timestamp: nowBogotaISOString(),
             attempts: job.attemptsMade,
+            ...(movedTo ? { archivoMovido: movedTo } : {}),
           },
         },
       );
@@ -249,6 +284,42 @@ export class ModelProcessor extends WorkerHost {
       const dbErrMsg =
         dbError instanceof Error ? dbError.message : String(dbError);
       this.logger.error(`Failed to update document state: ${dbErrMsg}`);
+    }
+  }
+
+  /**
+   * Mueve un archivo a la carpeta de revisión (OCR_UNREADABLE_PATH) cuando
+   * un documento queda en estado de error terminal en la etapa de IA
+   * (permanente o tras agotar reintentos), para que no quede huérfano en
+   * OCR_PATH dentro del contenedor.
+   */
+  private async moveToReviewFolder(filePath?: string): Promise<string | null> {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return null;
+    }
+
+    try {
+      await fs.promises.access(this.unreadablePath);
+    } catch {
+      await fs.promises.mkdir(this.unreadablePath, { recursive: true });
+    }
+
+    const destination = path.join(this.unreadablePath, path.basename(filePath));
+
+    try {
+      await fs.promises.rename(filePath, destination);
+      return destination;
+    } catch {
+      try {
+        await fs.promises.copyFile(filePath, destination);
+        await fs.promises.unlink(filePath);
+        return destination;
+      } catch (moveErr: any) {
+        this.logger.error(
+          `No se pudo mover ${filePath} a la carpeta de revisión: ${moveErr.message}`,
+        );
+        return null;
+      }
     }
   }
 }
