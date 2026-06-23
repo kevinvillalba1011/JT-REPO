@@ -175,43 +175,13 @@ export class OcrProcessor extends WorkerHost {
         return;
       }
 
-      const extractedText = await strategy.extractText(filePath);
+      // PDF/imágenes: ya NO se ejecuta OCR (Document AI) en esta etapa. El
+      // archivo se pasa tal cual al model stage, donde se envía directo a Gemini
+      // (multimodal). Document AI queda como FALLBACK dentro de ModelProcessor
+      // si el multimodal falla o el archivo es demasiado grande para inline.
+      // La detección de "ilegible" se evalúa ahora en el model stage.
 
-      if (!extractedText.trim()) {
-        this.logger.warn('Document is unreadable by OCR (Empty text)');
-
-        try {
-          await fs.promises.access(this.unreadablePath);
-        } catch {
-          await fs.promises.mkdir(this.unreadablePath, { recursive: true });
-        }
-
-        const unreadableBaseName = path.basename(filePath);
-        const unreadableDestination = path.join(
-          this.unreadablePath,
-          unreadableBaseName,
-        );
-
-        try {
-          await fs.promises.rename(filePath, unreadableDestination);
-        } catch {
-          await fs.promises.copyFile(filePath, unreadableDestination);
-          await fs.promises.unlink(filePath);
-        }
-
-        await this.documentRepository.updateState(
-          documentId,
-          DocumentState.OCR_UNREADABLE,
-          { ocrText: `Archivo movido a revisión: ${unreadableDestination}` },
-        );
-        return;
-      }
-
-      // Success
-      this.logger.log(`OCR Extracted ${extractedText.length} characters.`);
-
-      // Move file to TMP_OCR_PATH
-      // baseName ya está declarado arriba
+      // Move file to TMP_OCR_PATH (baseName ya está declarado arriba)
       const newFilePath = path.join(this.ocrPath, baseName);
 
       try {
@@ -221,26 +191,21 @@ export class OcrProcessor extends WorkerHost {
         await fs.promises.unlink(filePath);
       }
 
-      // Save to DB and Update State
-      // Note: Repository updateState expects Prisma.DocumentUpdateInput compatible payload
-      // Assuming 'texto_ocr' exists in your Prisma schema. If not, this logical payload will fail at runtime or type check.
-      // Based on previous steps, we assume it exists.
       await this.documentRepository.updateState(
         documentId,
         DocumentState.EN_COLA_MODELO,
         {
-          ocrText: extractedText,
+          ocrText: '[multimodal] PDF enviado directo a Gemini',
         },
       );
 
       // Enqueue to cola_modelo with exponential backoff for rate limits
-      this.logger.log(`OCR Success. Moving to cola_modelo.`);
+      this.logger.log(`Documento listo. Moving to cola_modelo (multimodal).`);
       await this.modelQueue.add(
         'process-model',
         {
           documentId,
           filePath: newFilePath,
-          text: extractedText,
           originalPath: originalPath || filePath,
         },
         {

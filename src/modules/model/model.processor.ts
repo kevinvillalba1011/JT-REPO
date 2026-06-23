@@ -13,6 +13,7 @@ import { IntegrationService } from '../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
 import { nowBogotaISOString } from '@/common/utils/date.util';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
+import { DocumentAiStrategy } from '../ocr/strategies/document-ai.strategy';
 
 @Injectable()
 @Processor('cola_modelo', {
@@ -35,6 +36,7 @@ export class ModelProcessor extends WorkerHost {
     private readonly geminiService: GeminiService,
     private readonly integrationService: IntegrationService,
     private readonly dailySequence: DailySequenceService,
+    private readonly docAiStrategy: DocumentAiStrategy,
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {
     super();
@@ -52,6 +54,87 @@ export class ModelProcessor extends WorkerHost {
         './local/ocr-unreadable',
       ),
     );
+  }
+
+  /**
+   * Deriva el mimeType soportado por Gemini a partir de la extensión.
+   * Devuelve null para extensiones no aptas para envío multimodal.
+   */
+  private resolveMimeType(filePath: string): string | null {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+      case '.pdf':
+        return 'application/pdf';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.png':
+        return 'image/png';
+      case '.tiff':
+      case '.tif':
+        return 'image/tiff';
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Estrategia de extracción: envía el archivo DIRECTO a Gemini (multimodal).
+   * Si el multimodal falla, o el archivo supera el límite inline configurado,
+   * cae a Document AI (OCR) → Gemini sobre texto como FALLBACK. Si ninguno
+   * extrae contenido, lanza error (documento ilegible → revisión).
+   */
+  private async extraerMultimodalConFallback(
+    filePath: string,
+  ): Promise<Record<string, unknown>> {
+    const mimeType = this.resolveMimeType(filePath);
+    const maxInlineMb = this.configService.get<number>(
+      'GEMINI_INLINE_MAX_MB',
+      15,
+    );
+
+    let demasiadoGrande = false;
+    try {
+      const stat = await fs.promises.stat(filePath);
+      demasiadoGrande = stat.size > maxInlineMb * 1024 * 1024;
+    } catch {
+      // Si no se puede medir el tamaño, se intenta multimodal de todos modos.
+    }
+
+    if (mimeType && !demasiadoGrande) {
+      try {
+        const buffer = await fs.promises.readFile(filePath);
+        this.logger.log(
+          `Extracción MULTIMODAL (PDF directo a Gemini): ${path.basename(filePath)}`,
+        );
+        return (await this.geminiService.extraerJudicial(
+          '(El contenido a procesar está en el documento adjunto.)',
+          buffer,
+          mimeType,
+        )) as Record<string, unknown>;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Multimodal falló (${msg}). Fallback a Document AI (OCR).`,
+        );
+      }
+    } else if (demasiadoGrande) {
+      this.logger.warn(
+        `Archivo supera ${maxInlineMb}MB para envío inline. Usando Document AI (OCR).`,
+      );
+    }
+
+    // Fallback: Document AI (OCR) -> Gemini sobre texto
+    const text = await this.docAiStrategy.extractText(filePath);
+    if (!text.trim()) {
+      throw new Error(
+        'Documento ilegible: ni el envío multimodal ni Document AI (OCR) extrajeron contenido.',
+      );
+    }
+    return (await this.geminiService.extraerJudicial(text)) as Record<
+      string,
+      unknown
+    >;
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
@@ -84,7 +167,7 @@ export class ModelProcessor extends WorkerHost {
             'Este es un trabajo antiguo de Word que ya no es compatible. El archivo se ha movido a la carpeta de no admitidos.',
           );
         }
-        resultJson = await this.geminiService.extraerJudicial(text);
+        resultJson = await this.extraerMultimodalConFallback(filePath);
 
         // Lógica temporalmente deshabilitada por petición del usuario para guardar el JSON puro
         /*
