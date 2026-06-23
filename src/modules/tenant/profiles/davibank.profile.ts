@@ -66,7 +66,7 @@ export const DavibankProfile: TenantProfile = {
         properties: {
           tipoOficio: {
             type: SchemaType.STRING,
-            description: 'EMBARGO, DESEMBARGO o ALCANCE O REQUERIMIENTO.',
+            description: 'EMBARGO, DESEMBARGO o ALCANCE.',
           },
           nombreOficioFinal: {
             type: SchemaType.STRING,
@@ -331,7 +331,7 @@ export const DavibankProfile: TenantProfile = {
      2. "demandados": ARRAY de objetos, UNO POR CADA demandado encontrado en el documento.
         Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta), productosFuturo, porcentajeAEmbargar, valorEmbargo.
         CRÍTICO — "productosFuturo" va a nivel del demandado, NO dentro de cada cuenta. Nombre exacto del campo en cuentas: "numeroCuenta" (NO "numeroCuentaEspecifica").
-        Si hay múltiples demandados, incluye todos en el array.
+        Si hay múltiples demandados, incluye todos en el array. IMPORTANTE: Si un mismo demandado aparece múltiples veces pero asociado a resoluciones o radicados distintos, DEBES extraerlo como un objeto independiente por cada resolución diferente. No omitas ni agrupes demandados si sus números de radicado varían.
         Si no se especifican cuentas para un demandado, el array "cuentas" puede estar vacío [].
     3. "demandantes": ARRAY de objetos, UNO POR CADA demandante/accionante encontrado.
        Cada uno con: tipoId, numeroId, nombre.
@@ -343,7 +343,8 @@ export const DavibankProfile: TenantProfile = {
     Para determinar 'oficio.tipoOficio', utiliza estas señales semánticas:
     1. EMBARGO: Busca "EMBARGO", "SECUESTRO", "BLOQUEO", "RETENCIÓN", "MEDIDA CAUTELAR", o "LIBRAR MANDAMIENTO DE PAGO".
     2. DESEMBARGO: Prioridad alta. Busca "DESEMBARGO", "LEVANTAMIENTO", "DEJAR SIN EFECTO", "LIBERACIÓN", "CANCELACIÓN", o "SUSPENDER".
-    3. ALCANCE O REQUERIMIENTO: Busca "REITERACIÓN", "REQUERIR", "MANTENIMIENTO", "OFICIAR", "INCIDENTE", "SANCIÓN", "DESACATO", "NOTIFICAR", o "AMPLIAR".
+    3. ALCANCE: Busca "REITERACIÓN", "REQUERIR", "MANTENIMIENTO", "OFICIAR", "INCIDENTE", "SANCIÓN", "DESACATO", "NOTIFICAR", o "AMPLIAR".
+    4. CONFUSIÓN/AMBIGÜEDAD: Si en el documento aparecen palabras clave tanto de EMBARGO como de DESEMBARGO y resulta confuso o contradictorio determinar el objetivo principal, clasifícalo OBLIGATORIAMENTE como "ALCANCE".
 
     --- REGLAS ESTRICTAS DE EXTRACCIÓN Y LIMPIEZA ---
     - OBSERVACIONES: Si dentro del texto del oficio se encuentra una o más de estas palabras clave: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado o certificación; entonces se deben capturar TODAS las que se encuentren y concatenarlas separadas por comas (ej. "Nomina, Pagador, Información"). Si no se encuentra ninguna, usar "0".
