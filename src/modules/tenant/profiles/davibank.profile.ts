@@ -86,7 +86,7 @@ export const DavibankProfile: TenantProfile = {
           observaciones: {
             type: SchemaType.STRING,
             description:
-              'Si el texto contiene una o más de estas palabras clave: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado, certificación. Se deben capturar y concatenar todas las que se encuentren separadas por comas. Si no se encuentra ninguna, usar "0".',
+              'Si dentro del oficio se encuentra una o más de estas palabras claves exactas: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado, certificación. Se deben capturar usando EXACTAMENTE la misma palabra de esta lista y concatenarlas separadas por comas. Si no se encuentra ninguna, usar "0".',
           },
           tipoRequerimiento: {
             type: SchemaType.STRING,
@@ -298,7 +298,7 @@ export const DavibankProfile: TenantProfile = {
           tipoAplicacion: {
             type: SchemaType.STRING,
             description:
-              'Informacion que trae el documento acorde a la instrucción del oficio y se debe interpretar de la siguiente manera: CONGELAR: Mantener los recursos en la cuenta, Congelar, Congelar Recursos, Bloquear. DEBITAR: Consignar, Debitar, Dejar a disposicion. Si no se encuentra ninguna de estas palabras clave, dejar "0".',
+              'Si dentro del oficio se encuentra las palabras claves exactas "Mantener los recursos en la cuenta", "Congelar", "Congelar Recursos" o "Bloquear" se debe interpretar como "CONGELAR". Si dentro del oficio se encuentra las palabras claves exactas "Consignar", "Debitar" o "Dejar a disposicion" se debe interpretar como "DEBITAR". de lo contrario se debe dejar "0".',
           },
           vinculoCliente: {
             type: SchemaType.STRING,
@@ -347,7 +347,7 @@ export const DavibankProfile: TenantProfile = {
     4. CONFUSIÓN/AMBIGÜEDAD: Si en el documento aparecen palabras clave tanto de EMBARGO como de DESEMBARGO y resulta confuso o contradictorio determinar el objetivo principal, clasifícalo OBLIGATORIAMENTE como "ALCANCE".
 
     --- REGLAS ESTRICTAS DE EXTRACCIÓN Y LIMPIEZA ---
-    - OBSERVACIONES: Si dentro del texto del oficio se encuentra una o más de estas palabras clave: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado o certificación; entonces se deben capturar TODAS las que se encuentren y concatenarlas separadas por comas (ej. "Nomina, Pagador, Información"). Si no se encuentra ninguna, usar "0".
+    - OBSERVACIONES: Si dentro del oficio se encuentra una o más de estas palabras claves exactas: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado o certificación; entonces se deben capturar usando EXACTAMENTE la misma palabra de esta lista y concatenarlas separadas por comas (ej. "Nomina, Pagador, Información"). Si no se encuentra ninguna, usar "0".
     - TIPO PROCESO: Identificar si es "JUDICIAL", "COACTIVO" o "EJECUTIVO". Ubicarlo exclusivamente en "ente.tipoProceso". No debe ir en "oficio.tipoProceso".
     - VALORES POR DEFECTO O FALLBACK (OBLIGATORIO): Si cualquier campo de tipo texto o número (ej. observaciones, valorEmbargo, porcentajeAEmbargar, vinculoCliente, codigoAlcance, codigoAplicacion, oficioEmbargoADesembargar, etc.) no es encontrado, no aplica, o está vacío en el documento, se debe rellenar estrictamente con "0" (como string o número 0 según el tipo). NO uses null ni strings vacíos (""). Los arrays vacíos que no tengan elementos detectados se deben retornar como [] (arreglos vacíos normales).
     - NÚMEROS DE IDENTIFICACIÓN: Remover formato. Extraer exclusivamente dígitos. Truncar si supera 12 caracteres.
@@ -362,7 +362,7 @@ export const DavibankProfile: TenantProfile = {
     - PRODUCTOS A FUTURO (productosFuturo): Va a nivel del demandado, NO dentro de cuentas. Si el oficio indica embargar productos futuros, extraer estrictamente "SI". En caso contrario, extraer estrictamente "NO" (o "0" si no se menciona en absoluto).
     - TIPO DOCUMENTO RECIBIDO EMAIL: Clasificar el tipo de documento o correo dentro de las opciones permitidas: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
     - TIPO ID: 1 solo carácter. Si dice CC o Cédula de Ciudadanía usa "C", si dice NIT usa "N", si dice TI usa "T", si dice E usa "E", si dice P usa "P".
-    - CORREOS ELECTRÓNICOS: Extraer todas las direcciones válidas que contengan @ como ARRAY. Si no hay, retornar [].
+    - CORREOS ELECTRÓNICOS: Extraer TODAS las direcciones válidas que contengan @ como ARRAY. Es OBLIGATORIO extraer el correo del remitente (ej. Juzgado o entidad que emite el oficio), el cual suele ubicarse en el encabezado o al final del documento. Si no hay, retornar [].
     - NOMBRES: Demandados máximo 50 caracteres, demandantes máximo 25 caracteres, entes máximo 40 caracteres.
     - PORCENTAJE: Solo el número, sin signo %. Si no hay, usar "0".
     - TIPO RESPUESTA: Priorizar "Email" si existe un correo en el texto o si no se especifica método físico/link.
