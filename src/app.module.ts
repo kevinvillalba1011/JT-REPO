@@ -10,6 +10,7 @@ import { ReportModule } from './modules/report/report.module';
 import { ClientModule } from './modules/client/client.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { IntegrationModule } from './modules/integration/integration.module';
+import { TestModule } from './modules/test/test.module';
 import { FolderInitializerService } from './common/services/folder-initializer.service';
 import { DailySequenceModule } from './common/services/daily-sequence.module';
 
@@ -41,6 +42,7 @@ import { validate } from './common/config/env.validation';
     TenantModule,
     IntegrationModule,
     DailySequenceModule,
+    TestModule,
   ],
   providers: [FolderInitializerService],
 })

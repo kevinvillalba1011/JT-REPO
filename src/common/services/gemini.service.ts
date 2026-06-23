@@ -3,6 +3,18 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { TenantProfile } from '../../modules/tenant/interfaces/tenant-profile.interface';
 
+export interface GeminiUsage {
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface GeminiExtractionResult {
+  json: Record<string, unknown>;
+  usage: GeminiUsage | null;
+  modelUsed: string;
+}
+
 @Injectable()
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
@@ -46,6 +58,28 @@ export class GeminiService {
     fileBuffer?: Buffer,
     mimeType?: string,
   ): Promise<any> {
+    const { json } = await this.generarExtraccion(text, fileBuffer, mimeType);
+    return json;
+  }
+
+  /**
+   * Igual que extraerJudicial pero además devuelve el uso de tokens y el modelo
+   * efectivamente utilizado, para medir el costo real de una extracción
+   * (usado por la ruta de prueba multimodal de PDF directo a Gemini).
+   */
+  async extraerJudicialConCosto(
+    text: string,
+    fileBuffer?: Buffer,
+    mimeType?: string,
+  ): Promise<GeminiExtractionResult> {
+    return this.generarExtraccion(text, fileBuffer, mimeType);
+  }
+
+  private async generarExtraccion(
+    text: string,
+    fileBuffer?: Buffer,
+    mimeType?: string,
+  ): Promise<GeminiExtractionResult> {
     this.logger.verbose(
       'Starting data extraction via Gemini API with Structured Outputs',
     );
@@ -88,11 +122,18 @@ export class GeminiService {
         const result = await model.generateContent(parts);
         const generatedText = result.response.text();
 
-        const usage = result.response.usageMetadata;
+        const usageMeta = result.response.usageMetadata;
+        const usage: GeminiUsage | null = usageMeta
+          ? {
+              promptTokens: usageMeta.promptTokenCount ?? 0,
+              outputTokens: usageMeta.candidatesTokenCount ?? 0,
+              totalTokens: usageMeta.totalTokenCount ?? 0,
+            }
+          : null;
         if (usage) {
           this.logger.log(
-            `[COSTO] modelo=${modelId} promptTokens=${usage.promptTokenCount} ` +
-              `outputTokens=${usage.candidatesTokenCount} totalTokens=${usage.totalTokenCount}`,
+            `[COSTO] modelo=${modelId} promptTokens=${usage.promptTokens} ` +
+              `outputTokens=${usage.outputTokens} totalTokens=${usage.totalTokens}`,
           );
         }
 
@@ -104,9 +145,9 @@ export class GeminiService {
           .replace(/^```(?:json)?/i, '')
           .replace(/```$/i, '')
           .trim();
-        const resultJson = JSON.parse(cleanedText);
+        const resultJson = JSON.parse(cleanedText) as Record<string, unknown>;
 
-        return resultJson;
+        return { json: resultJson, usage, modelUsed: modelId };
       } catch (err: unknown) {
         lastError = err instanceof Error ? err : new Error(String(err));
         const errMsg = err instanceof Error ? err.message : String(err);

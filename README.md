@@ -159,8 +159,8 @@ Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local
 
 - **Base de Clientes:** Si subes clientes nuevos, debes actualizar y reemplazar el archivo local en `./local/data/clients.csv`. *(El sistema lo relee y refresca en caliente automáticamente cada 1 hora)*.
 - **Ingesta de Oficios:** El sistema puede leer de múltiples carpetas simultáneamente. 
-  - **En el Servidor:** Configura las rutas reales de tus carpetas en el `.env` usando `SERVER_PATH_1`, `SERVER_PATH_2` y `SERVER_PATH_3`.
-  - **Configuración:** La variable `LOCAL_SOURCE_PATHS` en el `.env` apunta a las rutas internas del contenedor (`/app/source/1`, etc.) que Docker mapea automáticamente a tus carpetas del servidor.
+  - **En el Servidor:** Configura las rutas reales de tus carpetas en el `.env` usando `SERVER_PATH_1`, `SERVER_PATH_2`, `SERVER_PATH_3` y `SERVER_PATH_4` (esta última es la carpeta MASIVOS).
+  - **Configuración:** La variable `LOCAL_SOURCE_PATHS` en el `.env` apunta a las rutas internas del contenedor (`/app/source/1`, `/app/source/2`, `/app/source/3`, `/app/source/masivos`) que Docker mapea automáticamente a tus carpetas del servidor.
   - **Procesamiento:** El bot escanea todas estas ubicaciones de forma **recursiva** buscando archivos válidos.
 - **Reportes Finales:** Finalizada la IA, tu CSV limpio segmentado por campos se guardará con la fecha de hoy dentro de `./local/reports/`.
 - **Archivos Especiales:** Los archivos duplicados (MD5 existente) se mueven a `./local/duplicates` con un timestamp. Los archivos con formato no soportado (ej. `.docx`, `.zip`) se mueven a `./local/unsupported`.
@@ -172,7 +172,7 @@ Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local
 
 | Variable                   | Descripción                                      |
 | -------------------------- | ------------------------------------------------ |
-| `SERVER_PATH_1...3`        | Rutas absolutas del servidor hacia las 3 carpetas a monitorear |
+| `SERVER_PATH_1...4`        | Rutas absolutas del servidor hacia las 4 carpetas a monitorear (la 4ta es MASIVOS) |
 | `LOCAL_SOURCE_PATHS`       | Mapeo interno de carpetas en el contenedor separadas por comas |
 | `TENANT_PROFILE`           | Controla esquema Multi-Tenant (ej. `default`)    |
 | `DATABASE_URL`             | URL de conexión a PostgreSQL                     |
