@@ -99,6 +99,10 @@ export class GeminiService {
             generationConfig: {
               responseMimeType: 'application/json',
               responseSchema: this.profile.responseSchema,
+              // Extracción determinística: no es una tarea creativa, así que
+              // se minimiza la temperatura para reducir la varianza/invención
+              // del modelo frente al texto/documento dado.
+              temperature: 0,
             },
           },
           { timeout: timeoutMs },

@@ -206,6 +206,22 @@ export class ModelProcessor extends WorkerHost {
       const oficio = resultJson.oficio as Record<string, unknown>;
       oficio.fechaHoraProcesamientoOficio = nowIso;
 
+      // Cinturón y tirantes: el schema de Gemini ya restringe tipoOficio a un
+      // enum estricto (EMBARGO/DESEMBARGO/ALCANCE), pero por si igual llega
+      // con un calificador/sufijo (ej. "ALCANCE INDIVIDUAL"), se colapsa al
+      // valor limpio. DESEMBARGO se evalúa antes que EMBARGO porque lo
+      // contiene como substring ("DES-EMBARGO").
+      if (typeof oficio.tipoOficio === 'string') {
+        const tipoOficioUpper = oficio.tipoOficio.trim().toUpperCase();
+        if (tipoOficioUpper.includes('DESEMBARGO')) {
+          oficio.tipoOficio = 'DESEMBARGO';
+        } else if (tipoOficioUpper.includes('EMBARGO')) {
+          oficio.tipoOficio = 'EMBARGO';
+        } else if (tipoOficioUpper.includes('ALCANCE')) {
+          oficio.tipoOficio = 'ALCANCE';
+        }
+      }
+
       // Inyectar nombreOficioInicial desde el nombre del archivo original (trazabilidad)
       const nombreOficioInicial = path.basename(
         filePath,
