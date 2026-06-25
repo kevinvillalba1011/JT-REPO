@@ -225,38 +225,33 @@ export class OcrProcessor extends WorkerHost {
         },
       );
 
-      // Enqueue to cola_modelo with exponential backoff for rate limits
+      // Enqueue to cola_modelo with exponential backoff for rate limits.
+      // No envolvemos este .add() en try/catch propio: BullMQ nunca lanza
+      // excepción si el jobId ya existe (lo trata como duplicado en
+      // silencio), así que cualquier excepción acá es un error real. Dejamos
+      // que se propague al catch de abajo, que ya sabe clasificar
+      // permanente/transitorio, marcar ERROR_OCR y mover el archivo a
+      // revisión — reusar esa lógica es más seguro que duplicarla.
       this.logger.log(`Documento listo. Moving to cola_modelo (multimodal).`);
       const modelJobId = buildDeterministicJobId('model', baseName);
-      try {
-        await this.modelQueue.add(
-          'process-model',
-          {
-            documentId,
-            filePath: newFilePath,
-            originalPath: originalPath || filePath,
+      await this.modelQueue.add(
+        'process-model',
+        {
+          documentId,
+          filePath: newFilePath,
+          originalPath: originalPath || filePath,
+        },
+        {
+          jobId: modelJobId,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 15000, // Waits 15s -> 30s -> 60s if model rate limit hits
           },
-          {
-            jobId: modelJobId,
-            attempts: 3,
-            backoff: {
-              type: 'exponential',
-              delay: 15000, // Waits 15s -> 30s -> 60s if model rate limit hits
-            },
-            removeOnComplete: true,
-            removeOnFail: true,
-          },
-        );
-      } catch (enqueueErr: unknown) {
-        // Job duplicado (mismo jobId ya en curso): el trabajo de OCR/routing
-        // de este job ya quedó hecho (archivo movido, estado actualizado);
-        // no lo tratamos como fallo de esta etapa.
-        const enqueueMsg =
-          enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
-        this.logger.warn(
-          `No se pudo encolar process-model para "${baseName}" (jobId=${modelJobId}): ${enqueueMsg}. Se asume job duplicado ya en curso.`,
-        );
-      }
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      );
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

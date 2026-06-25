@@ -220,6 +220,27 @@ export class ModelProcessor extends WorkerHost {
         typeof oficio.nombreOficioFinal === 'string'
           ? oficio.nombreOficioFinal
           : '';
+
+      // Si no se encontró número de oficio, el prompt le dice a Gemini que
+      // use "0", pero en la práctica no es consistente (a veces devuelve
+      // variantes como "000000", confundiéndolo con el fallback de fecha).
+      // Determinístico: si el primer token (numeroOficio) es puro cero, se
+      // reemplaza por la fecha que el propio modelo ya puso como segundo
+      // token de la misma cadena ("{numeroOficio} DEL {fecha} {consecutivo}"),
+      // en vez de depender de que el modelo siga la regla del prompt al pie
+      // de la letra.
+      const oficioTokens = nombreOficioFinal.trim().split(/\s+/);
+      if (
+        oficioTokens.length >= 3 &&
+        oficioTokens[1] === 'DEL' &&
+        /^0+$/.test(oficioTokens[0]) &&
+        /^\d{6}$/.test(oficioTokens[2]) &&
+        !/^0+$/.test(oficioTokens[2])
+      ) {
+        oficioTokens[0] = oficioTokens[2];
+        nombreOficioFinal = oficioTokens.join(' ');
+      }
+
       if (OFICIO_PLACEHOLDER.test(nombreOficioFinal)) {
         const { mmdd, consecutivo } = await this.dailySequence.getNext();
         nombreOficioFinal = nombreOficioFinal.replace(

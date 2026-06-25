@@ -136,12 +136,19 @@ export class ExtractionService implements OnApplicationBootstrap {
             { jobId, removeOnComplete: true, removeOnFail: true },
           );
         } catch (err: unknown) {
-          // Si el job ya existe (ej. seguía legítimamente en Redis tras un
-          // crash y no llegó a procesarse), no rompemos la recuperación del
-          // resto de documentos.
+          // BullMQ NUNCA lanza excepción si el jobId ya existe (devuelve el
+          // job existente en silencio) — por lo tanto esto es siempre un
+          // error real (ej. jobId inválido, Redis caído), no un duplicado.
+          // No lo enmascaramos: se loguea como error y se marca el
+          // documento, para no dejarlo huérfano en su estado "en progreso".
           const msg = err instanceof Error ? err.message : String(err);
-          this.logger.warn(
-            `No se pudo re-encolar process-ocr para Document ${doc.id} (jobId=${jobId}): ${msg}. Puede que ya exista un job en curso.`,
+          this.logger.error(
+            `Error al re-encolar process-ocr para Document ${doc.id} (jobId=${jobId}): ${msg}`,
+          );
+          await this.documentRepository.updateState(
+            doc.id,
+            DocumentState.ERROR_OCR,
+            { ocrText: `Error al re-encolar en recuperación: ${msg}` },
           );
         }
       } else {
@@ -198,9 +205,23 @@ export class ExtractionService implements OnApplicationBootstrap {
             { jobId, removeOnComplete: true, removeOnFail: true },
           );
         } catch (err: unknown) {
+          // Igual que en el loop de OCR: un duplicado real nunca lanza en
+          // BullMQ, así que esto es un error genuino. Se marca el documento
+          // en vez de dejarlo huérfano en EN_COLA_MODELO/PROCESANDO_MODELO.
           const msg = err instanceof Error ? err.message : String(err);
-          this.logger.warn(
-            `No se pudo re-encolar process-model para Document ${doc.id} (jobId=${jobId}): ${msg}. Puede que ya exista un job en curso.`,
+          this.logger.error(
+            `Error al re-encolar process-model para Document ${doc.id} (jobId=${jobId}): ${msg}`,
+          );
+          await this.documentRepository.updateState(
+            doc.id,
+            DocumentState.MODEL_ERROR,
+            {
+              jsonModel: {
+                error: `Error al re-encolar en recuperación: ${msg}`,
+                errorType: 'permanent_failure',
+                timestamp: nowBogotaISOString(),
+              },
+            },
           );
         }
       } else {
@@ -385,14 +406,21 @@ export class ExtractionService implements OnApplicationBootstrap {
           },
         );
       } catch (enqueueErr: unknown) {
-        // Carrera entre el getJob() de arriba y este add(): no rompemos el
-        // flujo de ingesta por esto. El Document ya quedó registrado; si
-        // existe un job hermano en curso para el mismo archivo, ese job es
-        // el que terminará de procesarlo.
+        // BullMQ NUNCA lanza excepción si el jobId ya existe (devuelve el
+        // job existente en silencio, ver handleDuplicatedJob) — por lo tanto
+        // esto SIEMPRE es un error real (jobId inválido, Redis caído, etc.),
+        // nunca un duplicado legítimo. No lo enmascaramos como tal: se
+        // loguea como error y se marca el Document recién creado, para no
+        // dejarlo huérfano en EN_COLA_OCR sin job ni explicación.
         const enqueueMsg =
           enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
-        this.logger.warn(
-          `No se pudo encolar process-ocr para "${fileName}" (jobId=${jobId}): ${enqueueMsg}. Se asume job duplicado ya en curso.`,
+        this.logger.error(
+          `Error al encolar process-ocr para "${fileName}" (jobId=${jobId}): ${enqueueMsg}`,
+        );
+        await this.documentRepository.updateState(
+          newDoc.id,
+          DocumentState.ERROR_OCR,
+          { ocrText: `Error al encolar: ${enqueueMsg}` },
         );
       }
     } catch (err: any) {

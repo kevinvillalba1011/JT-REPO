@@ -1,10 +1,17 @@
 /**
  * Construye un jobId determinístico para BullMQ a partir del nombre de
  * archivo. Al usar siempre el mismo jobId para el mismo archivo físico,
- * BullMQ no permite que exista más de un job activo/pendiente con ese id en
- * una misma cola — un segundo intento de encolar el mismo archivo mientras el
- * primero sigue en curso queda naturalmente bloqueado, sin necesidad de un
- * chequeo manual contra la base de datos.
+ * un segundo intento de encolarlo mientras el primero sigue activo/pendiente
+ * no crea un job nuevo: BullMQ detecta que el jobId ya existe y devuelve el
+ * job existente en silencio (NO lanza excepción en ese caso — ver
+ * `handleDuplicatedJob` en el código fuente de BullMQ). Por eso cualquier
+ * excepción real de `queue.add()` NUNCA es "duplicado", siempre es un error
+ * genuino (jobId inválido, Redis caído, etc.) y debe tratarse como tal.
+ *
+ * IMPORTANTE: BullMQ prohíbe el carácter ':' en jobId custom (lanza
+ * "Custom Id cannot contain :" salvo el caso muy específico de jobs
+ * repetibles legacy con exactamente 2 ':'). Por eso el separador acá es '-',
+ * nunca ':'.
  *
  * Se sanitiza para evitar caracteres que puedan resultar problemáticos como
  * parte de una clave de Redis (espacios, acentos, etc.) — no necesita ser
@@ -16,5 +23,5 @@ export function buildDeterministicJobId(
   fileName: string,
 ): string {
   const sanitized = fileName.replace(/[^\w.-]+/g, '_').slice(0, 200);
-  return `${prefix}:${sanitized}`;
+  return `${prefix}-${sanitized}`;
 }
