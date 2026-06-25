@@ -14,6 +14,7 @@ import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
 import { MassiveExcelService } from './services/massive-excel.service';
 import { IntegrationService } from '../integration/integration.service';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
+import { buildDeterministicJobId } from '@/common/utils/job-id.util';
 
 @Processor('cola_ocr', {
   concurrency: 5,
@@ -63,6 +64,31 @@ export class OcrProcessor extends WorkerHost {
 
     // Verificar si el archivo existe antes de empezar
     if (!fs.existsSync(filePath)) {
+      // Idempotencia: antes de asumir que es un error real, verificar si esto
+      // es un reintento (tras un move parcial exitoso) o un job duplicado
+      // (ej. el cron volvió a encolar el mismo archivo) cuyo hermano YA movió
+      // el archivo y avanzó el documento. En ese caso no hay nada roto: solo
+      // terminamos en silencio en vez de pisar el estado con un ERROR_OCR falso.
+      const baseNameCheck = path.basename(filePath);
+      const alreadyMovedToOcrPath = fs.existsSync(
+        path.join(this.ocrPath, baseNameCheck),
+      );
+      const currentDoc = await this.documentRepository.findById(documentId);
+      const documentAlreadyAdvanced =
+        !!currentDoc &&
+        currentDoc.state !== DocumentState.EN_COLA_OCR &&
+        currentDoc.state !== DocumentState.PROCESANDO_OCR;
+
+      if (alreadyMovedToOcrPath || documentAlreadyAdvanced) {
+        this.logger.log(
+          `Job ${job.id} (Document ${documentId}): el archivo ya no está en IN_PATH, pero ya fue procesado ` +
+            `por otro intento/job (estado actual: ${currentDoc?.state ?? 'desconocido'}` +
+            `${alreadyMovedToOcrPath ? ', archivo ya presente en OCR_PATH' : ''}). ` +
+            `Job duplicado/reintento tras move parcial: se ignora sin marcar error.`,
+        );
+        return;
+      }
+
       this.logger.error(`Archivo no encontrado para procesar: ${filePath}`);
       await this.documentRepository.updateState(
         documentId,
@@ -201,21 +227,36 @@ export class OcrProcessor extends WorkerHost {
 
       // Enqueue to cola_modelo with exponential backoff for rate limits
       this.logger.log(`Documento listo. Moving to cola_modelo (multimodal).`);
-      await this.modelQueue.add(
-        'process-model',
-        {
-          documentId,
-          filePath: newFilePath,
-          originalPath: originalPath || filePath,
-        },
-        {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 15000, // Waits 15s -> 30s -> 60s if model rate limit hits
+      const modelJobId = buildDeterministicJobId('model', baseName);
+      try {
+        await this.modelQueue.add(
+          'process-model',
+          {
+            documentId,
+            filePath: newFilePath,
+            originalPath: originalPath || filePath,
           },
-        },
-      );
+          {
+            jobId: modelJobId,
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 15000, // Waits 15s -> 30s -> 60s if model rate limit hits
+            },
+            removeOnComplete: true,
+            removeOnFail: true,
+          },
+        );
+      } catch (enqueueErr: unknown) {
+        // Job duplicado (mismo jobId ya en curso): el trabajo de OCR/routing
+        // de este job ya quedó hecho (archivo movido, estado actualizado);
+        // no lo tratamos como fallo de esta etapa.
+        const enqueueMsg =
+          enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
+        this.logger.warn(
+          `No se pudo encolar process-model para "${baseName}" (jobId=${modelJobId}): ${enqueueMsg}. Se asume job duplicado ya en curso.`,
+        );
+      }
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

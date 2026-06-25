@@ -44,6 +44,9 @@ services:
       - IN_PATH=/app/local/in
       - OCR_PATH=/app/local/ocr
       - EXCEL_DESTINATION_PATH=/app/local/excel-done
+      # Carpeta de archivos no soportados (extensión no admitida o peso mayor
+      # a FILE_MAX_SIZE_MB). Cae bajo el mount de ./local:/app/local.
+      - UNSUPPORTED_PATH=/app/local/unsupported
       # Ruta de PDFs procesados: se usa tanto para escribir el archivo como para
       # el valor de oficio.rutaPdf. Debe ser una ruta del host compartida por los
       # servicios que luego leen el PDF (p.ej. ms-process-document-em).

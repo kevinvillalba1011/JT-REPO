@@ -31,8 +31,10 @@ Si tu tarea toca varios temas, lee todos los documentos relevantes antes de empe
 ## 📋 Contexto del Proyecto
 
 **Nombre:** JT-REPO
-**Stack:** NestJS, Prisma (PostgreSQL), Redis (BullMQ), Google Document AI, Google Gemini.
-**Objetivo:** Automatizar el procesamiento de documentos judiciales mediante OCR e IA generativa para extraer datos estructurados con soporte multitenant.
+**Stack:** NestJS, Prisma (PostgreSQL), Redis (BullMQ), Google Gemini (multimodal), Google Document AI (fallback OCR).
+**Objetivo:** Automatizar el procesamiento de documentos judiciales mediante IA generativa multimodal (Gemini, PDF directo) para extraer datos estructurados, con Document AI (OCR) como respaldo y soporte multitenant.
+
+**Flujo de extracción (individual):** Gemini multimodal es el camino **principal** (PDF directo, sin tope de 30 páginas); Document AI (OCR) quedó **solo como fallback** cuando el multimodal falla o el archivo supera `GEMINI_INLINE_MAX_MB`. Document AI sigue siendo dependencia obligatoria por ser ese fallback. Detalle en [`.agents/architecture.md`](.agents/architecture.md).
 
 ## 📦 Comandos
 

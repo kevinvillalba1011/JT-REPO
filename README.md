@@ -1,6 +1,6 @@
 # Sistema de Procesamiento de Documentos Asíncrono
 
-Pipeline de procesamiento de documentos judiciales con NestJS, BullMQ (Redis), Prisma ORM (PostgreSQL), Google Document AI y Gemini (Multi-Tenant).
+Pipeline de procesamiento de documentos judiciales con NestJS, BullMQ (Redis), Prisma ORM (PostgreSQL), Google Gemini (multimodal — extracción principal) y Google Document AI (OCR de respaldo). Multi-Tenant.
 
 ---
 
@@ -183,7 +183,8 @@ Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local
 | `UNSUPPORTED_PATH`         | Carpeta de no admitidos (`./local/unsupported`)  |
 | `DUPLICATES_PATH`          | Carpeta de duplicados (`./local/duplicates`)     |
 | `GEMINI_API_KEY`           | API Key provista por Google AI Studio            |
-| `DOCUMENT_AI_PROCESSOR_ID` | ID extraído de Google Document AI                |
+| `GEMINI_INLINE_MAX_MB`     | Tamaño máx. (MB) para enviar un PDF/imagen inline a Gemini (multimodal). Por encima del umbral se usa Document AI como fallback. Default: `15` |
+| `DOCUMENT_AI_PROCESSOR_ID` | ID de Google Document AI. **Sigue siendo obligatorio**: Document AI quedó como fallback del flujo multimodal |
 
 ### 🔗 Integración Externa REST (Opcional)
 
@@ -199,42 +200,42 @@ El sistema permite despachar automáticamente los resultados en tiempo real a un
 
 ## 🔄 Pipeline de Estados & APIs
 
-**1. Flujo de Extracción y Modelado:**
+**1. Flujo de Extracción y Modelado** (IA multimodal primero; OCR solo fallback):
 
 ```text
 [Cron Job de Ingesta] (Escaneo recursivo local)
           ↓
-     EN_COLA_OCR 
- (Orquestador de Estrategias)
-          │
-          ├─► Archivo .PDF / .JPG / .PNG 
-          │      └─► (DocumentAiStrategy) -> OCR -> Gemini (cola_modelo) -> IA_OK
+     EN_COLA_OCR
+ (Orquestador / router de estrategias — ya NO ejecuta OCR para PDFs)
           │
           ├─► Archivo .XLS / .XLSX / .CSV (Carga Masiva)
           │      └─► (MassiveExcelService) -> Bypass IA y OCR
-          │          │
           │          ├─► PROCESANDO_EXCEL (Lectura por Streams/Lotes)
-          │          │
           │          └─► EXCEL_OK (Éxito. Datos en tabla excel_records)
           │
+          ├─► Archivo .PDF / .JPG / .PNG
+          │      └─► OcrProcessor solo mueve el archivo y lo encola a cola_modelo
+          │          (FORMATO_NO_SOPORTADO si la extensión no se admite)
+          │
           ▼
-   PROCESANDO_OCR 
+   EN_COLA_MODELO  →  PROCESANDO_MODELO
+          │
+          ├─► 1) PRINCIPAL: PDF directo a Gemini (multimodal).
+          │      Acepta PDF nativo, SIN tope de 30 páginas.
+          │
+          ├─► 2) FALLBACK: si el multimodal falla o el archivo supera
+          │      GEMINI_INLINE_MAX_MB → Document AI (OCR) -> texto -> Gemini.
           │
           ├─► ERRORES POSIBLES:
-          │      • OCR_UNREADABLE (Imagen borrosa)
-          │      • ERROR_OCR (Falla de Red o Archivo Corrupto)
-          │      • ERROR_EXCEL (Error en estructura o lectura del Excel)
-          │      • FORMATO_NO_SOPORTADO (Se mueve a local/unsupported)
+          │      • MODEL_ERROR (ni multimodal ni OCR extrajeron / JSON inválido)
           │
           ▼
-   EN_COLA_MODELO (Se inyecta el Texto puro a Gemini)
-          │
-          ├─► ERRORES POSIBLES:
-          │      • MODEL_ERROR (Gemini alucinó o JSON incompleto)
-          │
-          ▼
-         IA_OK (Éxito para documentos individuales analizados por IA)
+         IA_OK (documento individual analizado por IA)
 ```
+
+> **Document AI sigue siendo dependencia obligatoria** por ser el fallback (requiere `DOCUMENT_AI_PROCESSOR_ID`, `GCP_PROJECT_ID` y credenciales GCP). Los documentos ilegibles caen en `MODEL_ERROR`. Antes el flujo era **OCR primero → texto → Gemini**; ahora es **Gemini multimodal primero → fallback OCR**.
+>
+> **2026-06-24:** se eliminaron del enum `DocumentState` los valores `OCR_UNREADABLE`, `DUPLICADO` y `ERROR_EXCEL` (vestigiales, sin uso en el código). Ver `migrations/20260624_cleanup_document_state_enum/migration.sql`.
 
 **Auto-Recuperación (Resilience):**
 _(Si un contenedor crashea abruptamente o se reinicia la aplicación, el backend cuenta con un mecanismo de resiliencia leyendo los estados PostgreSQL para re-encolar a Redis los archivos olvidados en estados `EN_COLA_X`)._

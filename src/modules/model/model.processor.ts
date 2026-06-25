@@ -2,7 +2,7 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger, Injectable, Inject } from '@nestjs/common';
 import { DocumentRepository } from '../documents/repositories/document.repository';
-import { DocumentState } from '@prisma/client';
+import { DocumentState, IntegrationStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,7 +11,7 @@ import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
 import { IntegrationService } from '../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
-import { nowBogotaISOString } from '@/common/utils/date.util';
+import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { DocumentAiStrategy } from '../ocr/strategies/document-ai.strategy';
 
@@ -273,7 +273,9 @@ export class ModelProcessor extends WorkerHost {
         resultJson.infoCliente as Record<string, unknown>
       ).fechaHoraRecepcionCorreo = nowIso;
 
-      // Update DB
+      // Update DB. Esto se guarda ANTES de intentar el envío externo: el
+      // JSON extraído nunca debe perderse ni quedar pendiente de escribir
+      // solo porque el envío al servicio externo tarde, falle o cuelgue.
       await this.documentRepository.updateState(
         documentId,
         DocumentState.IA_OK,
@@ -282,8 +284,29 @@ export class ModelProcessor extends WorkerHost {
         },
       );
 
-      // Integrate with external REST service
-      await this.integrationService.sendData(resultJson, 'IA_OK');
+      // Integrate with external REST service. sendData() nunca lanza (atrapa
+      // sus propios errores) y devuelve un boolean — antes se descartaba,
+      // dejando sin rastro en BD si el JSON realmente llegó al sistema
+      // externo. Se persiste el resultado en integrationStatus, un campo
+      // dedicado separado del estado IA_OK (que sigue significando solo
+      // "extracción exitosa").
+      const integrationSent = await this.integrationService.sendData(
+        resultJson,
+        'IA_OK',
+      );
+      await this.documentRepository.updateState(
+        documentId,
+        DocumentState.IA_OK,
+        {
+          integrationStatus: integrationSent
+            ? IntegrationStatus.ENVIADO
+            : IntegrationStatus.FALLIDO,
+          integrationSentAt: nowBogotaDate(),
+          integrationError: integrationSent
+            ? null
+            : 'Fallo al enviar al servicio externo (ver logs de IntegrationService para detalle).',
+        },
+      );
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(

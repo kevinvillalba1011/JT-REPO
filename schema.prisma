@@ -13,16 +13,23 @@ enum DocumentState {
   EN_COLA_OCR
   PROCESANDO_OCR
   ERROR_OCR
-  OCR_UNREADABLE
   EN_COLA_MODELO
   PROCESANDO_MODELO
   MODEL_ERROR
   IA_OK
   FORMATO_NO_SOPORTADO
-  DUPLICADO
   PROCESANDO_EXCEL
   EXCEL_OK
-  ERROR_EXCEL
+}
+
+// Trazabilidad del envío al servicio externo, como dimensión separada del
+// DocumentState principal (que solo describe el resultado de la extracción).
+// PENDIENTE = aún no se intentó enviar; ENVIADO = entregado con éxito;
+// FALLIDO = se intentó y falló (ver Document.integrationError).
+enum IntegrationStatus {
+  PENDIENTE
+  ENVIADO
+  FALLIDO
 }
 
 
@@ -36,6 +43,13 @@ model Document {
   jsonModel    Json?         @map("json_modelo")
   lotesEnviados Json?        @map("lotes_enviados")
 
+  // Trazabilidad del envío al servicio externo. Campo dedicado, separado del
+  // DocumentState principal: IA_OK sigue significando únicamente "extracción
+  // exitosa", sin mezclar si el JSON efectivamente llegó al sistema externo.
+  integrationStatus IntegrationStatus @default(PENDIENTE) @map("estado_integracion")
+  integrationSentAt DateTime?         @map("integracion_enviado_en")
+  integrationError  String?           @map("integracion_error") @db.Text
+
   stateLogs DocumentStateLog[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -44,6 +58,7 @@ model Document {
   @@index([state])
   @@index([createdAt])
   @@index([md5Hash])
+  @@index([integrationStatus])
   @@map("documents")
 }
 

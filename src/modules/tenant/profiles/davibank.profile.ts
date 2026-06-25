@@ -258,7 +258,7 @@ export const DavibankProfile: TenantProfile = {
           linkColocacionRespuesta: {
             type: SchemaType.STRING,
             description:
-              'Link o dirección física en la cual se debe cargar o remitir la respuesta.',
+              'SIEMPRE debe quedar en "0". NUNCA llenar con el link de verificación del documento (ej. URL de firmaelectronica.ramajudicial.gov.co) ni con ninguna otra URL, dirección física o texto. Valor fijo obligatorio: "0".',
           },
         },
         required: [
@@ -363,6 +363,7 @@ export const DavibankProfile: TenantProfile = {
     - TIPO DOCUMENTO RECIBIDO EMAIL: Clasificar el tipo de documento o correo dentro de las opciones permitidas: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
     - TIPO ID: 1 solo carácter. Si dice CC o Cédula de Ciudadanía usa "C", si dice NIT usa "N", si dice TI usa "T", si dice E usa "E", si dice P usa "P".
     - CORREOS ELECTRÓNICOS: Extraer TODAS las direcciones válidas que contengan @ como ARRAY. Es OBLIGATORIO extraer el correo del remitente (ej. Juzgado o entidad que emite el oficio), el cual suele ubicarse en el encabezado o al final del documento. Si no hay, retornar [].
+    - LINK COLOCACION RESPUESTA (linkColocacionRespuesta): SIEMPRE debe quedar en "0". NUNCA lo llenes con el link de verificación del documento (ej. URL de firmaelectronica.ramajudicial.gov.co), ni con ninguna otra URL, dirección física o texto. Es un valor fijo: "0".
     - NOMBRES: Demandados máximo 50 caracteres, demandantes máximo 25 caracteres, entes máximo 40 caracteres.
     - PORCENTAJE: Solo el número, sin signo %. Si no hay, usar "0".
     - TIPO RESPUESTA: Priorizar "Email" si existe un correo en el texto o si no se especifica método físico/link.
