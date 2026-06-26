@@ -137,8 +137,10 @@ export const DavibankProfile: TenantProfile = {
           properties: {
             tipoId: {
               type: SchemaType.STRING,
+              format: 'enum',
+              enum: ['C', 'N', 'E', 'T', 'P'],
               description:
-                'Tipo de identificación: C (Cédula), N (NIT), E (Extranjería), T (TI), P (Pasaporte). 1 carácter.',
+                'Tipo de identificación, 1 sola letra: C = Cédula de Ciudadanía, N = NIT, E = Cédula de Extranjería, T = Tarjeta de Identidad, P = Pasaporte.',
             },
             numeroId: {
               type: SchemaType.STRING,
@@ -211,7 +213,10 @@ export const DavibankProfile: TenantProfile = {
           properties: {
             tipoId: {
               type: SchemaType.STRING,
-              description: 'Tipo de identificación: C, N, E, T, P. 1 carácter.',
+              format: 'enum',
+              enum: ['C', 'N', 'E', 'T', 'P'],
+              description:
+                'Tipo de identificación, 1 sola letra: C = Cédula de Ciudadanía, N = NIT, E = Cédula de Extranjería, T = Tarjeta de Identidad, P = Pasaporte.',
             },
             numeroId: {
               type: SchemaType.STRING,
@@ -360,7 +365,7 @@ export const DavibankProfile: TenantProfile = {
     - TIPO PROCESO (ente.tipoProceso): "JUDICIAL" si el documento menciona JUZGADO; en cualquier otro caso (incluido EJECUTIVO) es "COACTIVO".
     - TIPO REQUERIMIENTO (oficio.tipoRequerimiento): clasifica en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR. Si no hay, usar "0".
     - TIPO DOCUMENTO RECIBIDO EMAIL (infoCliente.tipoDocumentoRecibidoEmail): clasifica dentro de: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
-    - TIPO ID (demandados[].tipoId, demandantes[].tipoId): 1 solo carácter. CC o Cédula de Ciudadanía → "C", NIT → "N", TI → "T", Extranjería → "E", Pasaporte → "P".
+    - TIPO ID (demandados[].tipoId, demandantes[].tipoId): 1 sola letra. Si el documento usa la forma larga, conviértela a la corta: "CC" o "Cédula de Ciudadanía" → "C", "NIT" → "N", "CE" o "Cédula de Extranjería" → "E", "TI" o "Tarjeta de Identidad" → "T", "PA" o "Pasaporte" → "P".
     - TIPO RESPUESTA (infoCliente.tipoRespuesta): prioriza "Email" si existe un correo en el texto o si no se especifica método físico/link.
     - PRODUCTOS A FUTURO (demandados[].productosFuturo): "SI" si el oficio indica embargar productos futuros, "NO" si lo descarta explícitamente, "0" si no se menciona en absoluto.
 

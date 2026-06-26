@@ -15,6 +15,15 @@ import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { DocumentAiStrategy } from '../ocr/strategies/document-ai.strategy';
 
+/** Variantes largas de tipoId aceptadas en el documento, mapeadas a la letra corta del enum. */
+const TIPO_ID_LARGO_A_CORTO: Record<string, string> = {
+  CC: 'C',
+  NIT: 'N',
+  CE: 'E',
+  TI: 'T',
+  PA: 'P',
+};
+
 @Injectable()
 @Processor('cola_modelo', {
   concurrency: parseInt(process.env.MODEL_QUEUE_CONCURRENCY || '2', 10),
@@ -137,6 +146,90 @@ export class ModelProcessor extends WorkerHost {
     >;
   }
 
+  /**
+   * Normaliza un campo string a solo dígitos y lo recorta a `maxLength`.
+   * Si el resultado queda vacío, usa el fallback "0" (la convención de
+   * fallback del prompt). No toca el valor si ya es "0". Loguea si hubo
+   * que limpiar o recortar, para trazabilidad.
+   */
+  private normalizeNumericField(
+    fieldLabel: string,
+    value: unknown,
+    maxLength: number,
+  ): unknown {
+    if (typeof value !== 'string' || value === '0') {
+      return value;
+    }
+    const soloDigitos = value.replace(/\D+/g, '');
+    const normalizado = soloDigitos.slice(0, maxLength) || '0';
+    if (normalizado !== value) {
+      const cambios: string[] = [];
+      if (soloDigitos !== value) {
+        cambios.push('se quitaron caracteres no numéricos');
+      }
+      if (soloDigitos.length > maxLength) {
+        cambios.push(`se recortó a ${maxLength} caracteres`);
+      }
+      if (!soloDigitos) {
+        cambios.push('quedó vacío tras limpiar, se usó fallback "0"');
+      }
+      this.logger.debug(
+        `${fieldLabel} normalizado (${cambios.join('; ')}): "${value}" -> "${normalizado}"`,
+      );
+    }
+    return normalizado;
+  }
+
+  /**
+   * Normaliza un campo de nombre a mayúsculas y lo recorta a `maxLength`.
+   * No toca el valor si ya es "0" (fallback). Loguea si hubo que
+   * mayuscular o recortar, para trazabilidad.
+   */
+  private normalizeNameField(
+    fieldLabel: string,
+    value: unknown,
+    maxLength: number,
+  ): unknown {
+    if (typeof value !== 'string' || value === '0') {
+      return value;
+    }
+    const mayusculas = value.toUpperCase();
+    const normalizado = mayusculas.slice(0, maxLength);
+    if (normalizado !== value) {
+      const cambios: string[] = [];
+      if (mayusculas !== value) {
+        cambios.push('se convirtió a mayúsculas');
+      }
+      if (mayusculas.length > maxLength) {
+        cambios.push(`se recortó a ${maxLength} caracteres`);
+      }
+      this.logger.debug(
+        `${fieldLabel} normalizado (${cambios.join('; ')}): "${value}" -> "${normalizado}"`,
+      );
+    }
+    return normalizado;
+  }
+
+  /**
+   * Normaliza tipoId a 1 sola letra (C/N/E/T/P). El schema de Gemini ya
+   * restringe el enum a esos 5 valores, pero esto es cinturón y tirantes
+   * por si el documento o el modelo devuelve la forma larga (CC, NIT, TI,
+   * PA, CE) — se mapea a la corta ANTES de quedar fuera del enum esperado.
+   */
+  private normalizeTipoId(fieldLabel: string, value: unknown): unknown {
+    if (typeof value !== 'string') {
+      return value;
+    }
+    const upper = value.trim().toUpperCase();
+    const normalizado = TIPO_ID_LARGO_A_CORTO[upper] ?? upper;
+    if (normalizado !== value) {
+      this.logger.debug(
+        `${fieldLabel} normalizado: "${value}" -> "${normalizado}"`,
+      );
+    }
+    return normalizado;
+  }
+
   async process(job: Job<any, any, string>): Promise<any> {
     const { documentId, filePath, text, originalPath } = job.data;
     this.logger.verbose(
@@ -222,41 +315,135 @@ export class ModelProcessor extends WorkerHost {
         }
       }
 
-      // Cinturón y tirantes: normaliza oficio.cuentaDepositoJudicial a solo
-      // dígitos y máximo 12 caracteres. El prompt ya lo pide ("numérica,
-      // máximo 12 caracteres"), pero el modelo no siempre lo respeta (puede
-      // dejar espacios, guiones o letras sueltas). Solo aplica al flujo
-      // individual — el flujo masivo (Excel) se llena manual, no se toca.
+      // Cinturón y tirantes: normaliza campos numéricos/de nombre con tope
+      // de longitud que pide el negocio (ver auditoría de cumplimiento).
+      // El prompt ya lo pide en cada caso, pero el modelo no siempre lo
+      // respeta. Solo aplica al flujo individual — el flujo masivo (Excel)
+      // se llena manual, no se toca. PENDIENTES a propósito (no se tocan
+      // todavía): nombreBancoDepositoJudicial, demandados[].nombre,
+      // oficioEmbargoADesembargar, valorEmbargo.
+      oficio.cuentaDepositoJudicial = this.normalizeNumericField(
+        'cuentaDepositoJudicial',
+        oficio.cuentaDepositoJudicial,
+        12,
+      );
+      oficio.radicadoOficioADesembargar = this.normalizeNumericField(
+        'radicadoOficioADesembargar',
+        oficio.radicadoOficioADesembargar,
+        23,
+      );
+
+      if (!resultJson.ente || typeof resultJson.ente !== 'object') {
+        resultJson.ente = {};
+      }
+      const ente = resultJson.ente as Record<string, unknown>;
+      ente.nombreEnteEmbargante = this.normalizeNameField(
+        'nombreEnteEmbargante',
+        ente.nombreEnteEmbargante,
+        40,
+      );
+      ente.nombreSecretarioFuncionario = this.normalizeNameField(
+        'nombreSecretarioFuncionario',
+        ente.nombreSecretarioFuncionario,
+        25,
+      );
+
       if (
-        typeof oficio.cuentaDepositoJudicial === 'string' &&
-        oficio.cuentaDepositoJudicial !== '0'
+        !resultJson.infoCliente ||
+        typeof resultJson.infoCliente !== 'object'
       ) {
-        const original = oficio.cuentaDepositoJudicial;
-        const soloDigitos = original.replace(/\D+/g, '');
-        const normalizado = soloDigitos.slice(0, 12) || '0';
-        if (normalizado !== original) {
-          const cambios: string[] = [];
-          if (soloDigitos !== original) {
-            cambios.push('se quitaron caracteres no numéricos');
-          }
-          if (soloDigitos.length > 12) {
-            cambios.push('se recortó a 12 caracteres');
-          }
-          if (!soloDigitos) {
-            cambios.push('quedó vacío tras limpiar, se usó fallback "0"');
-          }
-          this.logger.debug(
-            `cuentaDepositoJudicial normalizado (${cambios.join('; ')}): "${original}" -> "${normalizado}"`,
+        resultJson.infoCliente = {};
+      }
+      const infoClienteTemprano = resultJson.infoCliente as Record<
+        string,
+        unknown
+      >;
+      // Forzado determinístico (mismo enfoque que linkColocacionRespuesta):
+      // codigoAplicacion y codigoAlcance todavía no tienen una fuente
+      // confiable de donde derivarlos (dependen de un listado del banco que
+      // el modelo no recibe), así que por ahora siempre quedan en "0" en el
+      // flujo individual, sin importar lo que devuelva Gemini.
+      infoClienteTemprano.codigoAplicacion = '0';
+      infoClienteTemprano.codigoAlcance = '0';
+
+      if (Array.isArray(resultJson.demandados)) {
+        for (const demandado of resultJson.demandados as Record<
+          string,
+          unknown
+        >[]) {
+          if (!demandado || typeof demandado !== 'object') continue;
+          demandado.tipoId = this.normalizeTipoId(
+            'demandados[].tipoId',
+            demandado.tipoId,
           );
+          demandado.numeroId = this.normalizeNumericField(
+            'demandados[].numeroId',
+            demandado.numeroId,
+            12,
+          );
+          demandado.numeroRadicado = this.normalizeNumericField(
+            'demandados[].numeroRadicado',
+            demandado.numeroRadicado,
+            23,
+          );
+          if (Array.isArray(demandado.cuentas)) {
+            for (const cuenta of demandado.cuentas as Record<
+              string,
+              unknown
+            >[]) {
+              if (!cuenta || typeof cuenta !== 'object') continue;
+              cuenta.numeroCuenta = this.normalizeNumericField(
+                'demandados[].cuentas[].numeroCuenta',
+                cuenta.numeroCuenta,
+                12,
+              );
+            }
+          }
         }
-        oficio.cuentaDepositoJudicial = normalizado;
       }
 
-      // Inyectar nombreOficioInicial desde el nombre del archivo original (trazabilidad)
-      const nombreOficioInicial = path.basename(
+      if (Array.isArray(resultJson.demandantes)) {
+        for (const demandante of resultJson.demandantes as Record<
+          string,
+          unknown
+        >[]) {
+          if (!demandante || typeof demandante !== 'object') continue;
+          demandante.tipoId = this.normalizeTipoId(
+            'demandantes[].tipoId',
+            demandante.tipoId,
+          );
+          demandante.numeroId = this.normalizeNumericField(
+            'demandantes[].numeroId',
+            demandante.numeroId,
+            12,
+          );
+          demandante.nombre = this.normalizeNameField(
+            'demandantes[].nombre',
+            demandante.nombre,
+            25,
+          );
+        }
+      }
+
+      // Inyectar nombreOficioInicial desde el nombre del archivo original
+      // (trazabilidad). Cinturón y tirantes: mayúsculas + tope de 40
+      // caracteres.
+      const nombreOficioInicialRaw = path.basename(
         filePath,
         path.extname(filePath),
       );
+      const nombreOficioInicial = nombreOficioInicialRaw
+        .toUpperCase()
+        .slice(0, 40);
+      if (nombreOficioInicial !== nombreOficioInicialRaw) {
+        this.logger.debug(
+          `nombreOficioInicial normalizado (mayúsculas` +
+            (nombreOficioInicialRaw.length > 40
+              ? ' + recorte a 40 caracteres'
+              : '') +
+            `): "${nombreOficioInicialRaw}" -> "${nombreOficioInicial}"`,
+        );
+      }
       oficio.nombreOficioInicial = nombreOficioInicial;
 
       // Post-procesar nombreOficioFinal: reemplazar placeholder con fecha proceso + consecutivo.
@@ -295,6 +482,19 @@ export class ModelProcessor extends WorkerHost {
         );
       }
       oficio.nombreOficioFinal = nombreOficioFinal;
+
+      // Cinturón y tirantes: recorta nombreOficioFinal a 40 caracteres.
+      // Se aplica DESPUÉS de resolver el placeholder/consecutivo arriba,
+      // para no cortar el consecutivo recién inyectado. Solo recorte, sin
+      // mayúsculas (el negocio no lo pide para este campo).
+      if (nombreOficioFinal.length > 40) {
+        const recortado = nombreOficioFinal.slice(0, 40);
+        this.logger.debug(
+          `nombreOficioFinal normalizado (se recortó a 40 caracteres): "${nombreOficioFinal}" -> "${recortado}"`,
+        );
+        nombreOficioFinal = recortado;
+        oficio.nombreOficioFinal = nombreOficioFinal;
+      }
 
       // Renombrar el archivo con nombreOficioFinal al moverlo a OCR_DESTINATION_PATH;
       // nombreOficioInicial conserva el nombre original para trazabilidad.
