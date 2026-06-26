@@ -222,6 +222,36 @@ export class ModelProcessor extends WorkerHost {
         }
       }
 
+      // Cinturón y tirantes: normaliza oficio.cuentaDepositoJudicial a solo
+      // dígitos y máximo 12 caracteres. El prompt ya lo pide ("numérica,
+      // máximo 12 caracteres"), pero el modelo no siempre lo respeta (puede
+      // dejar espacios, guiones o letras sueltas). Solo aplica al flujo
+      // individual — el flujo masivo (Excel) se llena manual, no se toca.
+      if (
+        typeof oficio.cuentaDepositoJudicial === 'string' &&
+        oficio.cuentaDepositoJudicial !== '0'
+      ) {
+        const original = oficio.cuentaDepositoJudicial;
+        const soloDigitos = original.replace(/\D+/g, '');
+        const normalizado = soloDigitos.slice(0, 12) || '0';
+        if (normalizado !== original) {
+          const cambios: string[] = [];
+          if (soloDigitos !== original) {
+            cambios.push('se quitaron caracteres no numéricos');
+          }
+          if (soloDigitos.length > 12) {
+            cambios.push('se recortó a 12 caracteres');
+          }
+          if (!soloDigitos) {
+            cambios.push('quedó vacío tras limpiar, se usó fallback "0"');
+          }
+          this.logger.debug(
+            `cuentaDepositoJudicial normalizado (${cambios.join('; ')}): "${original}" -> "${normalizado}"`,
+          );
+        }
+        oficio.cuentaDepositoJudicial = normalizado;
+      }
+
       // Inyectar nombreOficioInicial desde el nombre del archivo original (trazabilidad)
       const nombreOficioInicial = path.basename(
         filePath,

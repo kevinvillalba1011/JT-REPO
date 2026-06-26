@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { Document, DocumentState, Prisma } from '@prisma/client';
-import { nowBogotaDate } from '@/common/utils/date.util';
+import {
+  nowBogotaDate,
+  parseDateRangeBoundary,
+} from '@/common/utils/date.util';
 
 @Injectable()
 export class DocumentRepository {
@@ -103,8 +106,10 @@ export class DocumentRepository {
 
     if (startDate || endDate) {
       whereClause.createdAt = {};
-      if (startDate) whereClause.createdAt.gte = new Date(startDate);
-      if (endDate) whereClause.createdAt.lte = new Date(endDate);
+      if (startDate)
+        whereClause.createdAt.gte = parseDateRangeBoundary(startDate, false);
+      if (endDate)
+        whereClause.createdAt.lte = parseDateRangeBoundary(endDate, true);
     }
 
     const [data, total] = await Promise.all([
@@ -138,13 +143,29 @@ export class DocumentRepository {
     });
   }
 
-  async getMetrics() {
+  async getMetrics(filters?: { fechaInicio?: string; fechaFin?: string }) {
+    const whereClause: Prisma.DocumentWhereInput = {};
+    if (filters?.fechaInicio || filters?.fechaFin) {
+      whereClause.createdAt = {};
+      if (filters.fechaInicio)
+        whereClause.createdAt.gte = parseDateRangeBoundary(
+          filters.fechaInicio,
+          false,
+        );
+      if (filters.fechaFin)
+        whereClause.createdAt.lte = parseDateRangeBoundary(
+          filters.fechaFin,
+          true,
+        );
+    }
+
     const groups = await this.prisma.document.groupBy({
+      where: whereClause,
       by: ['state'],
       _count: true,
     });
 
-    const total = await this.prisma.document.count();
+    const total = await this.prisma.document.count({ where: whereClause });
 
     const stats = groups.reduce(
       (acc, curr) => {

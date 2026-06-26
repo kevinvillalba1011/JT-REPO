@@ -39,3 +39,24 @@ function toBogotaDate(date: Date): Date {
 export function formatBogotaDate(date: Date): string {
   return date.toISOString().replace('Z', '');
 }
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Convierte un boundary de fecha/hora recibido por query param (ISO 8601,
+ * con o sin hora) al `Date` comparable contra columnas Prisma como
+ * `createdAt`, que se almacenan con la convención "hora de Bogotá
+ * etiquetada como UTC" (ver `nowBogotaDate()`). Sin esta conversión, comparar
+ * un instante UTC real contra esas columnas queda desfasado 5 horas.
+ *
+ * Si el valor es solo fecha (sin hora, ej. "2026-06-25"), se completa con el
+ * inicio o fin de ese día en hora de Bogotá (según `endOfDay`) ANTES de
+ * convertir, para que filtrar por un día calendario incluya todo ese día.
+ */
+export function parseDateRangeBoundary(value: string, endOfDay: boolean): Date {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const time = endOfDay ? '23:59:59.999' : '00:00:00.000';
+    return new Date(`${value}T${time}Z`);
+  }
+  return toBogotaDate(new Date(value));
+}

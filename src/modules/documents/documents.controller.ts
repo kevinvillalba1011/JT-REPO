@@ -2,6 +2,7 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { DocumentService } from './documents.service';
 import { GetDocumentsDto } from './dto/get-documents.dto';
+import { GetMetricsDto } from './dto/get-metrics.dto';
 
 @ApiTags('Documents')
 @Controller('documents')
@@ -18,7 +19,7 @@ export class DocumentsController {
   @Get('metrics')
   @ApiOperation({ summary: 'Get document processing metrics' })
   @ApiResponse({ status: 200, description: 'Return metrics.' })
-  async getMetrics() {
-    return this.documentsService.getMetrics();
+  async getMetrics(@Query() query: GetMetricsDto) {
+    return this.documentsService.getMetrics(query);
   }
 }
