@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OcrProcessor } from './ocr.processor';
+import { MasivoProcessor } from './masivo.processor';
 import { BullModule } from '@nestjs/bullmq';
 import { DocumentsModule } from '../documents/documents.module';
 import { ConfigModule } from '@nestjs/config';
@@ -31,6 +32,10 @@ import { PrismaModule } from '@/common/prisma/prisma.module';
   ],
   providers: [
     OcrProcessor,
+    // cola_masivos, como cola_ocr arriba, se consume vía @Processor y no
+    // requiere registerQueue en este módulo (solo lo necesitan los módulos
+    // que la INYECTAN como productores — ver ExtractionModule).
+    MasivoProcessor,
     DocumentAiStrategy,
     ExcelExtractorStrategy,
     MassiveExcelService,

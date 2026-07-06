@@ -65,7 +65,7 @@ Vars validadas al arranque via `src/common/config/env.validation.ts` (`class-val
 src/
   modules/         # Lógica de negocio
     extraction/    # Cron de extracción de archivos
-    ocr/           # OcrProcessor + MassiveExcelService
+    ocr/           # OcrProcessor (individual) + MasivoProcessor (cola_masivos) + MassiveExcelService
     model/         # ModelProcessor (Gemini)
     integration/   # REST API externa
     tenant/        # Perfiles multitenant

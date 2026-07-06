@@ -40,6 +40,12 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - LOCAL_SOURCE_PATHS=/app/source/1,/app/source/2,/app/source/3,/app/source/masivos
+      # Ruta de la carpeta "masivos" tal como la ve LocalFileStrategy — debe
+      # coincidir EXACTAMENTE con el último elemento de LOCAL_SOURCE_PATHS.
+      # Se usa para (a) restringir esa carpeta a solo Excel/CSV en el escaneo
+      # individual, y (b) que MassiveExcelService localice el PDF asociado a
+      # cada plantilla.
+      - MASIVOS_SOURCE_PATH=/app/source/masivos
       # System Internal Paths
       - IN_PATH=/app/local/in
       - OCR_PATH=/app/local/ocr

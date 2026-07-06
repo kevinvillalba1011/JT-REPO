@@ -12,6 +12,13 @@ import { DocumentState } from '@prisma/client';
 import { buildDeterministicJobId } from '@/common/utils/job-id.util';
 import { nowBogotaISOString } from '@/common/utils/date.util';
 
+/**
+ * Extensiones que enrutan al flujo masivo (cola_masivos) en vez del flujo
+ * individual (cola_ocr). Mismo set que usa `LocalFileStrategy` para
+ * restringir la carpeta "masivos" al escaneo.
+ */
+const MASIVO_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
+
 @Injectable()
 export class ExtractionService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ExtractionService.name);
@@ -28,6 +35,7 @@ export class ExtractionService implements OnApplicationBootstrap {
     private readonly documentRepository: DocumentRepository,
     @InjectQueue('cola_ocr') private readonly ocrQueue: Queue,
     @InjectQueue('cola_modelo') private readonly modelQueue: Queue,
+    @InjectQueue('cola_masivos') private readonly masivosQueue: Queue,
   ) {
     this.inPath = path.resolve(
       process.cwd(),
@@ -230,6 +238,71 @@ export class ExtractionService implements OnApplicationBootstrap {
         );
       }
     }
+
+    // 3. Recover Masivo (EN_COLA_MASIVO y PROCESANDO_EXCEL). El archivo del
+    // flujo masivo nunca se mueve de IN_PATH hasta que MasivoProcessor lo
+    // envía a EXCEL_DESTINATION_PATH tras procesar con éxito, así que se
+    // busca en el mismo `this.inPath` que el flujo OCR.
+    const pendingMasivo = [
+      ...(await this.documentRepository.findByState(
+        DocumentState.EN_COLA_MASIVO,
+      )),
+      ...(await this.documentRepository.findByState(
+        DocumentState.PROCESANDO_EXCEL,
+      )),
+    ];
+    for (const doc of pendingMasivo) {
+      const filePath = path.join(this.inPath, doc.fileName);
+      const jobId = buildDeterministicJobId('masivo', doc.fileName);
+      const recovery = await this.resolveRecoveryAction(
+        this.masivosQueue,
+        jobId,
+      );
+
+      if (recovery.exhausted) {
+        const movedTo = await this.moveToReviewFolder(filePath, doc.fileName);
+        await this.documentRepository.updateState(
+          doc.id,
+          DocumentState.ERROR_OCR,
+          {
+            ocrText: movedTo
+              ? `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ | Archivo movido a revisión: ${movedTo}`
+              : `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ.`,
+          },
+        );
+        this.logger.warn(
+          `Document ${doc.id}: job ${jobId} ya agotó sus intentos en BullMQ antes del reinicio. Marcado ERROR_OCR sin reencolar.`,
+        );
+        continue;
+      }
+
+      if (fs.existsSync(filePath)) {
+        this.logger.log(`Recovering Document ${doc.id} for Masivo queue.`);
+        try {
+          await this.masivosQueue.add(
+            'process-masivo',
+            { documentId: doc.id, filePath },
+            { jobId, removeOnComplete: true, removeOnFail: true },
+          );
+        } catch (err: unknown) {
+          // Igual que en los loops de OCR/Model: un duplicado real nunca
+          // lanza en BullMQ, así que esto es un error genuino.
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `Error al re-encolar process-masivo para Document ${doc.id} (jobId=${jobId}): ${msg}`,
+          );
+          await this.documentRepository.updateState(
+            doc.id,
+            DocumentState.ERROR_OCR,
+            { ocrText: `Error al re-encolar en recuperación: ${msg}` },
+          );
+        }
+      } else {
+        this.logger.warn(
+          `Cannot recover Document ${doc.id} (Masivo): File not found at ${filePath}`,
+        );
+      }
+    }
   }
 
   /**
@@ -353,14 +426,26 @@ export class ExtractionService implements OnApplicationBootstrap {
         return;
       }
 
+      // Enrutamiento por extensión: Excel/CSV va a cola_masivos (procesador
+      // dedicado, sin competir por workers con el flujo individual de
+      // PDFs/imágenes); el resto sigue a cola_ocr como siempre.
+      const ext = path.extname(fileName).toLowerCase();
+      const isMasivo = MASIVO_EXTENSIONS.includes(ext);
+      const targetQueue = isMasivo ? this.masivosQueue : this.ocrQueue;
+      const jobPrefix = isMasivo ? 'masivo' : 'ocr';
+      const jobName = isMasivo ? 'process-masivo' : 'process-ocr';
+      const initialState = isMasivo
+        ? DocumentState.EN_COLA_MASIVO
+        : DocumentState.EN_COLA_OCR;
+
       // jobId determinístico por nombre de archivo: si el cron vuelve a
       // descubrir este mismo archivo en IN_PATH antes de que el job anterior
       // lo mueva (ej. el OCR/modelo tarda más que el intervalo del cron),
       // evitamos crear un segundo Document + un segundo job para el mismo
       // archivo físico, que es la causa raíz de "El archivo físico
       // desapareció de la carpeta de entrada" (ver diagnóstico previo).
-      const jobId = buildDeterministicJobId('ocr', fileName);
-      const existingJob = await this.ocrQueue.getJob(jobId);
+      const jobId = buildDeterministicJobId(jobPrefix, fileName);
+      const existingJob = await targetQueue.getJob(jobId);
       if (existingJob) {
         const jobState = await existingJob.getState();
         const isTerminal =
@@ -378,32 +463,45 @@ export class ExtractionService implements OnApplicationBootstrap {
       // Insert new Document
       const newDoc = await this.documentRepository.create({
         fileName: fileName,
-        state: DocumentState.EN_COLA_OCR,
+        state: initialState,
       });
 
       this.logger.log(
-        `Document created: ${newDoc.id}. Sending to queue cola_ocr.`,
+        `Document created: ${newDoc.id}. Sending to queue ${isMasivo ? 'cola_masivos' : 'cola_ocr'}.`,
       );
 
-      // Add to Queue
+      // Add to Queue.
+      // cola_masivos usa attempts: 1 (sin reintento a nivel BullMQ): el
+      // envío por chunk YA reintenta internamente hasta 3 veces con backoff
+      // (MassiveExcelService.sendBatchWithRetry); reintentar el JOB completo
+      // repetiría el parseo del Excel y el reenvío desde cero, arriesgando
+      // envíos duplicados al servicio externo. cola_ocr mantiene attempts: 3
+      // como hasta ahora.
       try {
-        await this.ocrQueue.add(
-          'process-ocr',
+        await targetQueue.add(
+          jobName,
           {
             documentId: newDoc.id,
             filePath: filePath, // Should we leave it in TMP_IN? Yes, until OCR moves it.
             originalPath: originalPath,
           },
-          {
-            jobId,
-            attempts: 3,
-            backoff: {
-              type: 'exponential',
-              delay: 20000, // 20s delay on retry (Wait, requirement says "2 reintentos y delay de 20s" - usually means fixed delay or specific backoff)
-            },
-            removeOnComplete: true,
-            removeOnFail: true,
-          },
+          isMasivo
+            ? {
+                jobId,
+                attempts: 1,
+                removeOnComplete: true,
+                removeOnFail: true,
+              }
+            : {
+                jobId,
+                attempts: 3,
+                backoff: {
+                  type: 'exponential',
+                  delay: 20000, // 20s delay on retry (Wait, requirement says "2 reintentos y delay de 20s" - usually means fixed delay or specific backoff)
+                },
+                removeOnComplete: true,
+                removeOnFail: true,
+              },
         );
       } catch (enqueueErr: unknown) {
         // BullMQ NUNCA lanza excepción si el jobId ya existe (devuelve el
@@ -411,11 +509,11 @@ export class ExtractionService implements OnApplicationBootstrap {
         // esto SIEMPRE es un error real (jobId inválido, Redis caído, etc.),
         // nunca un duplicado legítimo. No lo enmascaramos como tal: se
         // loguea como error y se marca el Document recién creado, para no
-        // dejarlo huérfano en EN_COLA_OCR sin job ni explicación.
+        // dejarlo huérfano en su estado "en cola" sin job ni explicación.
         const enqueueMsg =
           enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
         this.logger.error(
-          `Error al encolar process-ocr para "${fileName}" (jobId=${jobId}): ${enqueueMsg}`,
+          `Error al encolar ${jobName} para "${fileName}" (jobId=${jobId}): ${enqueueMsg}`,
         );
         await this.documentRepository.updateState(
           newDoc.id,

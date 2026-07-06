@@ -161,7 +161,7 @@ Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local
 - **Ingesta de Oficios:** El sistema puede leer de múltiples carpetas simultáneamente. 
   - **En el Servidor:** Configura las rutas reales de tus carpetas en el `.env` usando `SERVER_PATH_1`, `SERVER_PATH_2`, `SERVER_PATH_3` y `SERVER_PATH_4` (esta última es la carpeta MASIVOS).
   - **Configuración:** La variable `LOCAL_SOURCE_PATHS` en el `.env` apunta a las rutas internas del contenedor (`/app/source/1`, `/app/source/2`, `/app/source/3`, `/app/source/masivos`) que Docker mapea automáticamente a tus carpetas del servidor.
-  - **Procesamiento:** El bot escanea todas estas ubicaciones de forma **recursiva** buscando archivos válidos.
+  - **Procesamiento:** El bot escanea todas estas ubicaciones de forma **recursiva** buscando archivos válidos. Las 3 primeras carpetas procesan cualquier extensión soportada por el flujo individual (OCR/Gemini). **La carpeta MASIVOS es especial**: solo recoge automáticamente Excel/CSV (`.xlsx`/`.xls`/`.csv`), que se procesan en su propia cola (`cola_masivos`, separada de `cola_ocr` para no competir por workers con el flujo individual). Un PDF dejado en MASIVOS **no** se procesa solo — queda "en espera" hasta que un Excel de esa misma carpeta lo reclame por nombre: la plantilla trae el nombre original del PDF (`NOMBRE OFICIO INICIAL`) para localizarlo y el nombre final deseado (`NOMBRE OFICIO FINAL`) para renombrarlo antes de moverlo junto con el Excel a `EXCEL_DESTINATION_PATH`.
 - **Reportes Finales:** Finalizada la IA, tu CSV limpio segmentado por campos se guardará con la fecha de hoy dentro de `./local/reports/`.
 - **Archivos Especiales:** Los archivos duplicados (MD5 existente) se mueven a `./local/duplicates` con un timestamp. Los archivos con formato no soportado (ej. `.docx`, `.zip`) se mueven a `./local/unsupported`.
 - *(Rutas de Transición)*: `local/in/`, `local/ocr/` son internas del pipeline del sistema. No colocar ni tocar archivos allí para evitar disrumpir transacciones.
@@ -174,6 +174,8 @@ Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local
 | -------------------------- | ------------------------------------------------ |
 | `SERVER_PATH_1...4`        | Rutas absolutas del servidor hacia las 4 carpetas a monitorear (la 4ta es MASIVOS) |
 | `LOCAL_SOURCE_PATHS`       | Mapeo interno de carpetas en el contenedor separadas por comas |
+| `MASIVOS_SOURCE_PATH`      | Ruta de la carpeta MASIVOS vista por la app — debe coincidir con el último elemento de `LOCAL_SOURCE_PATHS`. Restringe esa carpeta a solo Excel/CSV y permite localizar el PDF asociado a cada plantilla |
+| `MASIVO_QUEUE_CONCURRENCY` | Concurrencia de `cola_masivos` (`MasivoProcessor`), independiente de `cola_ocr` (default `2`) |
 | `TENANT_PROFILE`           | Controla esquema Multi-Tenant (ej. `default`)    |
 | `DATABASE_URL`             | URL de conexión a PostgreSQL                     |
 | `IN_PATH`                  | Carpeta de entrada (`./local/in`)                |

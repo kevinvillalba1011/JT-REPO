@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '@/common/prisma/prisma.service';
@@ -95,13 +96,35 @@ export class MassiveExcelService {
       typeof baseOficio.nombreOficioFinal === 'string'
         ? baseOficio.nombreOficioFinal
         : '';
-    if (OFICIO_PLACEHOLDER.test(nombreOficioFinal)) {
-      const { mmdd, consecutivo } = await this.dailySequence.getNext();
-      nombreOficioFinal = nombreOficioFinal.replace(
-        OFICIO_PLACEHOLDER,
-        `${mmdd}${consecutivo}`,
-      );
-    }
+    // Para masivos, el usuario requiere que el nombre sea literal y NO se
+    // reemplace el placeholder (ej. 00000000) por la secuencia diaria.
+    // if (OFICIO_PLACEHOLDER.test(nombreOficioFinal)) {
+    //   const { mmdd, consecutivo } = await this.dailySequence.getNext();
+    //   nombreOficioFinal = nombreOficioFinal.replace(
+    //     OFICIO_PLACEHOLDER,
+    //     `${mmdd}${consecutivo}`,
+    //   );
+    // }
+
+    // Paso 3.5 — Localizar el PDF original asociado (1 Excel = 1 PDF,
+    // confirmado por el usuario). La persona que llenó la plantilla leyó
+    // este PDF, que hoy sigue "en espera" en MASIVOS_SOURCE_PATH porque
+    // LocalFileStrategy excluye PDFs/imágenes de esa carpeta del escaneo
+    // individual (ver local-file.strategy.ts). Solo se localiza acá — el
+    // renombrado/movido físico ocurre al final, después de que el batch
+    // completo termine sin lanzar excepción.
+    const nombreOficioInicial =
+      typeof baseOficio.nombreOficioInicial === 'string'
+        ? baseOficio.nombreOficioInicial
+        : '';
+    const masivosSourcePath = this.configService.get<string>(
+      'MASIVOS_SOURCE_PATH',
+      '',
+    );
+    const pdfEncontrado = await this.localizarPdfEnMasivos(
+      nombreOficioInicial,
+      masivosSourcePath,
+    );
 
     // Inyectar idLote, tipoOficio MASIVO y nombreOficioFinal resuelto en cada fila
     for (const row of rows) {
@@ -132,11 +155,29 @@ export class MassiveExcelService {
     }
 
     // Paso 3 — Armar payloads por chunk (un envío por lote)
-    const excelDestinationPath = this.configService.get<string>(
-      'EXCEL_DESTINATION_PATH',
-      '',
+    // path.resolve(process.cwd(), ...) para que quede SIEMPRE absoluto,
+    // igual que ocrDestinationPath en el flujo individual (model.processor.ts)
+    // — sin esto, rutaPdf quedaría relativo si EXCEL_DESTINATION_PATH en el
+    // .env es una ruta relativa, sin coincidir con la ruta real donde
+    // MasivoProcessor efectivamente mueve el archivo.
+    const excelDestinationPath = path.resolve(
+      process.cwd(),
+      this.configService.get<string>(
+        'EXCEL_DESTINATION_PATH',
+        './local/excel-done',
+      ),
     );
-    const rutaPdf = path.join(excelDestinationPath, path.basename(filePath));
+    // rutaPdf apunta al PDF asociado (ruta final que tendrá tras renombrarse
+    // a nombreOficioFinal y moverse a excel-done), NO al Excel. Si no se
+    // encontró el PDF, fallback determinístico a "0" — mismo sentinel de
+    // "no aplica" usado en el resto del sistema, en vez de apuntar al Excel
+    // (que sugeriría falsamente que existe un PDF).
+    const rutaPdf = pdfEncontrado
+      ? path.join(
+          excelDestinationPath,
+          `${nombreOficioFinal}${pdfEncontrado.ext}`,
+        )
+      : '0';
 
     const firstPayload = rows[0].payload;
     const todosLosDemandados = rows
@@ -189,6 +230,33 @@ export class MassiveExcelService {
       }
     }
 
+    // Paso 4 — Renombrar y mover el PDF asociado a excel-done, junto con el
+    // Excel. Se hace acá, al final, DESPUÉS de completar el batch (éxito o
+    // con fallas parciales por fila — mismo criterio que ya usa el Excel,
+    // que se mueve a excel-done sin importar filasFallidas). Si el batch
+    // lanzó una excepción antes de llegar acá (Excel corrupto, startBatch
+    // caído, etc.), este bloque nunca se ejecuta y el PDF queda intacto en
+    // masivos, sin renombrar ni mover — tal como se pidió.
+    if (pdfEncontrado) {
+      try {
+        await fs.promises.rename(pdfEncontrado.filePath, rutaPdf);
+      } catch {
+        try {
+          await fs.promises.copyFile(pdfEncontrado.filePath, rutaPdf);
+          await fs.promises.unlink(pdfEncontrado.filePath);
+        } catch (moveErr: unknown) {
+          const msg =
+            moveErr instanceof Error ? moveErr.message : String(moveErr);
+          this.logger.error(
+            `No se pudo mover el PDF asociado "${pdfEncontrado.filePath}" a "${rutaPdf}": ${msg}`,
+          );
+        }
+      }
+      this.logger.log(
+        `[4/4] PDF asociado renombrado y movido: "${pdfEncontrado.filePath}" -> "${rutaPdf}".`,
+      );
+    }
+
     const result: BatchResult = {
       loteId,
       enviados,
@@ -202,6 +270,66 @@ export class MassiveExcelService {
     );
 
     return result;
+  }
+
+  /**
+   * Busca en MASIVOS_SOURCE_PATH un PDF cuyo nombre (sin extensión,
+   * normalizado a mayúsculas/trim) coincida con `nombreOficioInicial`. Ese
+   * PDF es el que la persona leyó para llenar la plantilla — sigue "en
+   * espera" en masivos porque LocalFileStrategy excluye PDFs de esa carpeta
+   * del escaneo individual.
+   *
+   * Si hay más de una coincidencia, toma la primera (orden alfabético) y
+   * deja un warning con todas las candidatas — evita fallar el batch
+   * completo por ambigüedad, pero deja rastro para revisión manual.
+   */
+  private async localizarPdfEnMasivos(
+    nombreOficioInicial: string,
+    masivosSourcePath: string,
+  ): Promise<{ filePath: string; ext: string } | null> {
+    if (
+      !masivosSourcePath ||
+      !nombreOficioInicial ||
+      nombreOficioInicial === '0'
+    ) {
+      return null;
+    }
+
+    let entries: string[];
+    try {
+      entries = await fs.promises.readdir(masivosSourcePath);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `No se pudo leer MASIVOS_SOURCE_PATH ("${masivosSourcePath}") para buscar el PDF asociado: ${msg}`,
+      );
+      return null;
+    }
+
+    const target = nombreOficioInicial.trim().toUpperCase();
+    const candidatos = entries.filter((name) => {
+      const ext = path.extname(name);
+      if (ext.toLowerCase() !== '.pdf') return false;
+      return path.basename(name, ext).trim().toUpperCase() === target;
+    });
+
+    if (candidatos.length === 0) {
+      this.logger.warn(
+        `No se encontró ningún PDF en "${masivosSourcePath}" que coincida con nombreOficioInicial="${nombreOficioInicial}". rutaPdf quedará en fallback "0".`,
+      );
+      return null;
+    }
+
+    if (candidatos.length > 1) {
+      candidatos.sort();
+      this.logger.warn(
+        `Se encontraron ${candidatos.length} PDFs coincidiendo con "${nombreOficioInicial}" en "${masivosSourcePath}": [${candidatos.join(', ')}]. Se usará el primero (orden alfabético); revisar manualmente los demás.`,
+      );
+    }
+
+    const elegido = candidatos[0];
+    const ext = path.extname(elegido);
+    return { filePath: path.join(masivosSourcePath, elegido), ext };
   }
 
   /**

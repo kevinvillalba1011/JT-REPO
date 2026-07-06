@@ -18,6 +18,11 @@ enum DocumentState {
   MODEL_ERROR
   IA_OK
   FORMATO_NO_SOPORTADO
+  // Estado inicial de un Document del flujo masivo (Excel/CSV) antes de que
+  // MasivoProcessor lo tome de cola_masivos — la cola dedicada que evita que
+  // el procesamiento masivo compita por workers con el flujo individual
+  // (cola_ocr). Análogo a EN_COLA_OCR, pero para cola_masivos.
+  EN_COLA_MASIVO
   PROCESANDO_EXCEL
   EXCEL_OK
 }

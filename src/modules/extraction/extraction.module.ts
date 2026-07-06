@@ -7,7 +7,11 @@ import { BullModule } from '@nestjs/bullmq';
 @Module({
   imports: [
     DocumentsModule,
-    BullModule.registerQueue({ name: 'cola_ocr' }, { name: 'cola_modelo' }),
+    BullModule.registerQueue(
+      { name: 'cola_ocr' },
+      { name: 'cola_modelo' },
+      { name: 'cola_masivos' },
+    ),
   ],
   providers: [ExtractionService, LocalFileStrategy],
   exports: [ExtractionService],

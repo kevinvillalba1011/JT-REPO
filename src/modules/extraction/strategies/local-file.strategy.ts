@@ -7,10 +7,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
 
+/**
+ * Extensiones permitidas EXCLUSIVAMENTE para la carpeta "masivos"
+ * (MASIVOS_SOURCE_PATH): un PDF/imagen dejado ahí no debe ser recogido por
+ * el escaneo individual (OCR/Gemini) — debe quedar "en espera" hasta que el
+ * Excel correspondiente lo reclame por nombre (ver `MassiveExcelService`).
+ * Mismo set que ya usa `OcrProcessor` para detectar archivos de carga
+ * masiva (`.xlsx/.xls/.csv`).
+ */
+const MASIVOS_ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
+
 @Injectable()
 export class LocalFileStrategy implements FileExtractorStrategy {
   private readonly logger = new Logger(LocalFileStrategy.name);
   private readonly sourcePaths: string[];
+  private readonly masivosSourcePath: string;
 
   constructor(private readonly configService: ConfigService) {
     const paths = this.configService.get<string>(
@@ -18,6 +29,10 @@ export class LocalFileStrategy implements FileExtractorStrategy {
       './local/source',
     );
     this.sourcePaths = paths.split(',').map((p) => p.trim());
+    this.masivosSourcePath = this.configService.get<string>(
+      'MASIVOS_SOURCE_PATH',
+      '',
+    );
   }
 
   async extractFiles(destinationFolder: string): Promise<ExtractedFile[]> {
@@ -35,9 +50,21 @@ export class LocalFileStrategy implements FileExtractorStrategy {
         this.logger.warn(`Source path does not exist: ${sourcePath}`);
         continue;
       }
+
+      // La carpeta "masivos" tiene una lista de extensiones propia: solo
+      // Excel/CSV. PDFs/imágenes ahí quedan reservados para que
+      // MassiveExcelService los reclame por nombre, en vez de ser
+      // procesados en paralelo por el flujo individual.
+      const isMasivosFolder =
+        !!this.masivosSourcePath &&
+        path.resolve(sourcePath) === path.resolve(this.masivosSourcePath);
+      const extensionsForThisFolder = isMasivosFolder
+        ? MASIVOS_ALLOWED_EXTENSIONS
+        : allowedExtensions;
+
       await this.readDirectoryRecursive(
         sourcePath,
-        allowedExtensions,
+        extensionsForThisFolder,
         extractedFiles,
         destinationFolder,
       );

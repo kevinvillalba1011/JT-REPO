@@ -11,7 +11,6 @@ import { Queue } from 'bullmq';
 import { TextExtractorStrategy } from './strategies/text-extractor.strategy';
 import { DocumentAiStrategy } from './strategies/document-ai.strategy';
 import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
-import { MassiveExcelService } from './services/massive-excel.service';
 import { IntegrationService } from '../integration/integration.service';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { buildDeterministicJobId } from '@/common/utils/job-id.util';
@@ -23,7 +22,6 @@ import { buildDeterministicJobId } from '@/common/utils/job-id.util';
 export class OcrProcessor extends WorkerHost {
   private readonly logger = new Logger(OcrProcessor.name);
   private readonly ocrPath: string;
-  private readonly excelDestinationPath: string;
   private readonly unreadablePath: string;
   private readonly strategies: TextExtractorStrategy[];
 
@@ -33,20 +31,12 @@ export class OcrProcessor extends WorkerHost {
     @InjectQueue('cola_modelo') private readonly modelQueue: Queue,
     private readonly docAiStrategy: DocumentAiStrategy,
     private readonly excelStrategy: ExcelExtractorStrategy,
-    private readonly massiveExcelService: MassiveExcelService,
     private readonly integrationService: IntegrationService,
   ) {
     super();
     this.ocrPath = path.resolve(
       process.cwd(),
       this.configService.get<string>('OCR_PATH', './local/ocr'),
-    );
-    this.excelDestinationPath = path.resolve(
-      process.cwd(),
-      this.configService.get<string>(
-        'EXCEL_DESTINATION_PATH',
-        './local/excel-done',
-      ),
     );
     this.unreadablePath = path.resolve(
       process.cwd(),
@@ -110,60 +100,10 @@ export class OcrProcessor extends WorkerHost {
       const ext = path.extname(filePath).toLowerCase();
       const baseName = path.basename(filePath);
 
-      // --- LÓGICA DE EXCEL/CSV MASIVO (.xlsx, .xls, .csv) ---
-      if (['.xlsx', '.xls', '.csv'].includes(ext)) {
-        this.logger.log(
-          `Detectado archivo masivo ${ext}: ${baseName}. Iniciando carga directa.`,
-        );
-
-        await this.documentRepository.updateState(
-          documentId,
-          DocumentState.PROCESANDO_EXCEL,
-        );
-
-        const batchResult = await this.massiveExcelService.process(
-          filePath,
-          baseName,
-        );
-
-        // Mover al destino final externo de archivos Excel/CSV procesados
-        const newFilePath = path.join(this.excelDestinationPath, baseName);
-        try {
-          await fs.promises.rename(filePath, newFilePath);
-        } catch (err) {
-          await fs.promises.copyFile(filePath, newFilePath);
-          await fs.promises.unlink(filePath);
-        }
-
-        // Eliminar archivo original de la carpeta fuente
-        if (originalPath && originalPath !== filePath) {
-          try {
-            await fs.promises.unlink(originalPath);
-          } catch (err: any) {
-            this.logger.warn(
-              `Could not remove original source file ${originalPath}: ${err.message}`,
-            );
-          }
-        }
-
-        const summaryText =
-          `Batch loteId=${batchResult.loteId} ` +
-          `enviados=${batchResult.enviados} fallidos=${batchResult.fallidos}` +
-          (batchResult.filasFallidas.length
-            ? ` filasFallidas=[${batchResult.filasFallidas.join(',')}]`
-            : '');
-
-        await this.documentRepository.updateState(
-          documentId,
-          DocumentState.EXCEL_OK,
-          { ocrText: summaryText, lotesEnviados: batchResult.lotesEnviados },
-        );
-
-        this.logger.log(
-          `Carga masiva finalizada para ${baseName}. ${summaryText}`,
-        );
-        return;
-      }
+      // El flujo Excel/CSV masivo ya no pasa por acá — ExtractionService
+      // enruta esas extensiones directo a `cola_masivos`/`MasivoProcessor`
+      // (cola dedicada, para que no compita por workers con el flujo
+      // individual). Este processor vuelve a ser 100% flujo individual.
 
       const strategy = this.strategies.find((s) => s.canHandle(ext));
 
