@@ -49,7 +49,13 @@ services:
       # System Internal Paths
       - IN_PATH=/app/local/in
       - OCR_PATH=/app/local/ocr
-      - EXCEL_DESTINATION_PATH=/app/local/excel-done
+      # Ruta de Excel/CSV procesados y de los PDFs asociados del flujo masivo.
+      # Igual que OCR_DESTINATION_PATH (/opt/ocr-done): debe ser una ruta del
+      # host COMPARTIDA con los servicios que luego leen el PDF (ese string es
+      # el que queda en oficio.rutaPdf). Antes apuntaba a /app/local/excel-done
+      # (ruta interna del contenedor), por lo que rutaPdf salía inservible para
+      # el consumidor externo.
+      - EXCEL_DESTINATION_PATH=/opt/excel-done
       # Carpeta de archivos no soportados (extensión no admitida o peso mayor
       # a FILE_MAX_SIZE_MB). Cae bajo el mount de ./local:/app/local.
       - UNSUPPORTED_PATH=/app/local/unsupported
@@ -76,7 +82,7 @@ services:
       - ${SERVER_PATH_3}:/app/source/3
       - ${SERVER_PATH_4}:/app/source/masivos
       - ${OCR_DESTINATION_HOST_PATH:-./local/ocr-done}:/opt/ocr-done
-      - ${EXCEL_DESTINATION_HOST_PATH:-./local/excel-done}:/app/local/excel-done
+      - ${EXCEL_DESTINATION_HOST_PATH:-./local/excel-done}:/opt/excel-done
       - ${OCR_UNREADABLE_HOST_PATH:-./local/ocr-unreadable}:/opt/ocr-unreadable
       - ./secrets:/app/secrets
     restart: 'no'
