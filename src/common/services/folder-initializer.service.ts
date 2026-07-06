@@ -35,11 +35,27 @@ export class FolderInitializerService implements OnApplicationBootstrap {
         ),
       ),
 
-      // Local source/data paths
-      ...this.configService
-        .get<string>('LOCAL_SOURCE_PATHS', './local/source')
-        .split(',')
-        .map((p) => path.resolve(process.cwd(), p.trim())),
+      // Local source/data paths — 4 carpetas fijas, mismo nombre de
+      // variable en local y en producción (ver LocalFileStrategy).
+      path.resolve(
+        process.cwd(),
+        this.configService.get<string>('SOURCE_PATH_1', './local/source1'),
+      ),
+      path.resolve(
+        process.cwd(),
+        this.configService.get<string>('SOURCE_PATH_2', './local/source2'),
+      ),
+      path.resolve(
+        process.cwd(),
+        this.configService.get<string>('SOURCE_PATH_3', './local/source3'),
+      ),
+      path.resolve(
+        process.cwd(),
+        this.configService.get<string>(
+          'SOURCE_PATH_MASIVOS',
+          './local/masivos',
+        ),
+      ),
       path.resolve(
         process.cwd(),
         this.configService.get<string>('LOCAL_CLIENTS_PATH', './local/data'),

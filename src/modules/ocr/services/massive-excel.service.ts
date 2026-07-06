@@ -108,7 +108,7 @@ export class MassiveExcelService {
 
     // Paso 3.5 — Localizar el PDF original asociado (1 Excel = 1 PDF,
     // confirmado por el usuario). La persona que llenó la plantilla leyó
-    // este PDF, que hoy sigue "en espera" en MASIVOS_SOURCE_PATH porque
+    // este PDF, que hoy sigue "en espera" en SOURCE_PATH_MASIVOS porque
     // LocalFileStrategy excluye PDFs/imágenes de esa carpeta del escaneo
     // individual (ver local-file.strategy.ts). Solo se localiza acá — el
     // renombrado/movido físico ocurre al final, después de que el batch
@@ -118,7 +118,7 @@ export class MassiveExcelService {
         ? baseOficio.nombreOficioInicial
         : '';
     const masivosSourcePath = this.configService.get<string>(
-      'MASIVOS_SOURCE_PATH',
+      'SOURCE_PATH_MASIVOS',
       '',
     );
     const pdfEncontrado = await this.localizarPdfEnMasivos(
@@ -273,7 +273,7 @@ export class MassiveExcelService {
   }
 
   /**
-   * Busca en MASIVOS_SOURCE_PATH un PDF cuyo nombre (sin extensión,
+   * Busca en SOURCE_PATH_MASIVOS un PDF cuyo nombre (sin extensión,
    * normalizado a mayúsculas/trim) coincida con `nombreOficioInicial`. Ese
    * PDF es el que la persona leyó para llenar la plantilla — sigue "en
    * espera" en masivos porque LocalFileStrategy excluye PDFs de esa carpeta
@@ -301,7 +301,7 @@ export class MassiveExcelService {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `No se pudo leer MASIVOS_SOURCE_PATH ("${masivosSourcePath}") para buscar el PDF asociado: ${msg}`,
+        `No se pudo leer SOURCE_PATH_MASIVOS ("${masivosSourcePath}") para buscar el PDF asociado: ${msg}`,
       );
       return null;
     }

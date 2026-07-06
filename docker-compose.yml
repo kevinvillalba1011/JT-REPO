@@ -35,32 +35,14 @@ services:
     env_file:
       - .env
     environment:
+      # NODE_ENV y las 3 vars de conexión SÍ deben diferir entre local/Docker
+      # (host `db`/`redis` en vez de `localhost`) — es la única excepción a
+      # la unificación: no son "ubicación de carpeta", son direccionamiento
+      # de red interno de Docker Compose.
       - NODE_ENV=production
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-jt_documents}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - LOCAL_SOURCE_PATHS=/app/source/1,/app/source/2,/app/source/3,/app/source/masivos
-      # Ruta de la carpeta "masivos" tal como la ve LocalFileStrategy — debe
-      # coincidir EXACTAMENTE con el último elemento de LOCAL_SOURCE_PATHS.
-      # Se usa para (a) restringir esa carpeta a solo Excel/CSV en el escaneo
-      # individual, y (b) que MassiveExcelService localice el PDF asociado a
-      # cada plantilla.
-      - MASIVOS_SOURCE_PATH=/app/source/masivos
-      # System Internal Paths
-      - IN_PATH=/app/local/in
-      - OCR_PATH=/app/local/ocr
-      - EXCEL_DESTINATION_PATH=/app/local/excel-done
-      # Carpeta de archivos no soportados (extensión no admitida o peso mayor
-      # a FILE_MAX_SIZE_MB). Cae bajo el mount de ./local:/app/local.
-      - UNSUPPORTED_PATH=/app/local/unsupported
-      # Ruta de PDFs procesados: se usa tanto para escribir el archivo como para
-      # el valor de oficio.rutaPdf. Debe ser una ruta del host compartida por los
-      # servicios que luego leen el PDF (p.ej. ms-process-document-em).
-      - OCR_DESTINATION_PATH=/opt/ocr-done
-      # Carpeta donde se mueven los PDFs cuyo OCR no extrajo texto (escaneos
-      # ilegibles), para revisión manual desde el host.
-      - OCR_UNREADABLE_PATH=/opt/ocr-unreadable
-      # GCP & Gemini
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - GCP_LOCATION=${GCP_LOCATION}
       - DOCUMENT_AI_PROCESSOR_ID=${DOCUMENT_AI_PROCESSOR_ID}
@@ -70,14 +52,21 @@ services:
       - db
       - redis
     volumes:
+      # Todas las rutas de archivos (SOURCE_PATH_*, EXCEL_DESTINATION_PATH,
+      # OCR_DESTINATION_PATH, OCR_UNREADABLE_PATH) ya NO se hardcodean acá
+      # arriba en `environment:` — vienen del `.env` (vía `env_file`), con
+      # el MISMO nombre de variable que usa el `.env` local. El montaje es
+      # "espejo": ruta del host == ruta que ve la app adentro del
+      # contenedor, así no hace falta una variable `_HOST_PATH` separada
+      # para cada una.
       - ./local:/app/local
-      - ${SERVER_PATH_1}:/app/source/1
-      - ${SERVER_PATH_2}:/app/source/2
-      - ${SERVER_PATH_3}:/app/source/3
-      - ${SERVER_PATH_4}:/app/source/masivos
-      - ${OCR_DESTINATION_HOST_PATH:-./local/ocr-done}:/opt/ocr-done
-      - ${EXCEL_DESTINATION_HOST_PATH:-./local/excel-done}:/app/local/excel-done
-      - ${OCR_UNREADABLE_HOST_PATH:-./local/ocr-unreadable}:/opt/ocr-unreadable
+      - ${SOURCE_PATH_1}:${SOURCE_PATH_1}
+      - ${SOURCE_PATH_2}:${SOURCE_PATH_2}
+      - ${SOURCE_PATH_3}:${SOURCE_PATH_3}
+      - ${SOURCE_PATH_MASIVOS}:${SOURCE_PATH_MASIVOS}
+      - ${OCR_DESTINATION_PATH}:${OCR_DESTINATION_PATH}
+      - ${EXCEL_DESTINATION_PATH}:${EXCEL_DESTINATION_PATH}
+      - ${OCR_UNREADABLE_PATH}:${OCR_UNREADABLE_PATH}
       - ./secrets:/app/secrets
     restart: 'no'
     networks:

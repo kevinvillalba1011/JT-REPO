@@ -39,6 +39,8 @@ nul
 # Environment
 .env
 .env.local
+.env.*
+!.env.example
 
 .antigravityrules
 MEMORY.md

@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 
 /**
  * Extensiones permitidas EXCLUSIVAMENTE para la carpeta "masivos"
- * (MASIVOS_SOURCE_PATH): un PDF/imagen dejado ahí no debe ser recogido por
+ * (SOURCE_PATH_MASIVOS): un PDF/imagen dejado ahí no debe ser recogido por
  * el escaneo individual (OCR/Gemini) — debe quedar "en espera" hasta que el
  * Excel correspondiente lo reclame por nombre (ver `MassiveExcelService`).
  * Mismo set que ya usa `OcrProcessor` para detectar archivos de carga
@@ -24,15 +24,32 @@ export class LocalFileStrategy implements FileExtractorStrategy {
   private readonly masivosSourcePath: string;
 
   constructor(private readonly configService: ConfigService) {
-    const paths = this.configService.get<string>(
-      'LOCAL_SOURCE_PATHS',
-      './local/source',
+    // 4 carpetas fijas, cada una con su propia variable — mismo nombre en
+    // local y en producción, solo cambia el valor (unificación de env vars:
+    // ya no existen SERVER_PATH_* separadas de "las que lee la app").
+    const sourcePath1 = this.configService.get<string>(
+      'SOURCE_PATH_1',
+      './local/source1',
     );
-    this.sourcePaths = paths.split(',').map((p) => p.trim());
-    this.masivosSourcePath = this.configService.get<string>(
-      'MASIVOS_SOURCE_PATH',
-      '',
+    const sourcePath2 = this.configService.get<string>(
+      'SOURCE_PATH_2',
+      './local/source2',
     );
+    const sourcePath3 = this.configService.get<string>(
+      'SOURCE_PATH_3',
+      './local/source3',
+    );
+    const sourcePathMasivos = this.configService.get<string>(
+      'SOURCE_PATH_MASIVOS',
+      './local/masivos',
+    );
+    this.sourcePaths = [
+      sourcePath1,
+      sourcePath2,
+      sourcePath3,
+      sourcePathMasivos,
+    ];
+    this.masivosSourcePath = sourcePathMasivos;
   }
 
   async extractFiles(destinationFolder: string): Promise<ExtractedFile[]> {
