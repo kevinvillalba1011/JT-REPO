@@ -446,47 +446,71 @@ export class ModelProcessor extends WorkerHost {
       }
       oficio.nombreOficioInicial = nombreOficioInicial;
 
-      // Post-procesar nombreOficioFinal: reemplazar placeholder con fecha proceso + consecutivo.
-      // Gemini puede devolver "00000000" o literalmente "MMDDconsecutivo4Digitos".
-      const OFICIO_PLACEHOLDER = /00000000|MMDDconsecutivo4Digitos/;
-      let nombreOficioFinal =
+      // Construcción DETERMINÍSTICA de nombreOficioFinal.
+      // Estructura SIEMPRE: "{numeroOficio} DEL {fecha} {MMDD}{consecutivo4}".
+      // El código ARMA el nombre desde los datos en vez de depender de que
+      // Gemini entregue el esqueleto correcto (antes solo rellenaba un
+      // placeholder, y colapsaba a "0" pelado o a "000 DEL 000000 ..." si el
+      // modelo devolvía ceros). Del output del modelo solo se rescatan dos
+      // datos: el numeroOficio (1er token) y la fechaOficioDDMMAA (3er token,
+      // si vino con la estructura "{n} DEL {fecha} ..."). Todo lo demás se
+      // reconstruye.
+      const rawOficioFinal =
         typeof oficio.nombreOficioFinal === 'string'
           ? oficio.nombreOficioFinal
           : '';
+      const rawTokens = rawOficioFinal.trim().split(/\s+/);
+      const modeloNumeroOficio = rawTokens[0] ?? '';
+      const modeloFechaOficio =
+        rawTokens.length >= 3 && rawTokens[1] === 'DEL' ? rawTokens[2] : '';
 
-      // Si no se encontró número de oficio, el prompt le dice a Gemini que
-      // use "0", pero en la práctica no es consistente (a veces devuelve
-      // variantes como "000000", confundiéndolo con el fallback de fecha).
-      // Determinístico: si el primer token (numeroOficio) es puro cero, se
-      // reemplaza por la fecha que el propio modelo ya puso como segundo
-      // token de la misma cadena ("{numeroOficio} DEL {fecha} {consecutivo}"),
-      // en vez de depender de que el modelo siga la regla del prompt al pie
-      // de la letra.
-      const oficioTokens = nombreOficioFinal.trim().split(/\s+/);
-      if (
-        oficioTokens.length >= 3 &&
-        oficioTokens[1] === 'DEL' &&
-        /^0+$/.test(oficioTokens[0]) &&
-        /^\d{6}$/.test(oficioTokens[2]) &&
-        !/^0+$/.test(oficioTokens[2])
-      ) {
-        oficioTokens[0] = oficioTokens[2];
-        nombreOficioFinal = oficioTokens.join(' ');
+      // numeroOficio válido: normalizar a SOLO dígitos y que NO sea todo ceros.
+      const numeroOficioDigitos = modeloNumeroOficio.replace(/\D+/g, '');
+      const numeroOficioValido =
+        numeroOficioDigitos.length > 0 && !/^0+$/.test(numeroOficioDigitos);
+
+      // fechaOficio válida: EXACTAMENTE 6 dígitos (DDMMAA) y NO todo ceros.
+      const fechaOficioDigitos = modeloFechaOficio.replace(/\D+/g, '');
+      const fechaOficioValida =
+        /^\d{6}$/.test(fechaOficioDigitos) && !/^0+$/.test(fechaOficioDigitos);
+
+      // Fecha ACTUAL en DDMMAA (día-mes-año, hora Bogotá vía nowBogotaDate).
+      // OJO: orden DÍA-MES, distinto del MMDD (mes-día) del consecutivo — no
+      // confundir los dos formatos.
+      const hoyBogota = nowBogotaDate();
+      const fechaActualDDMMAA =
+        String(hoyBogota.getUTCDate()).padStart(2, '0') +
+        String(hoyBogota.getUTCMonth() + 1).padStart(2, '0') +
+        String(hoyBogota.getUTCFullYear() % 100).padStart(2, '0');
+
+      // Segmento fecha (3ro): la del oficio si es válida; si no, la actual.
+      const segmentoFecha = fechaOficioValida
+        ? fechaOficioDigitos
+        : fechaActualDDMMAA;
+
+      // Segmento numeroOficio (1ro): el número si es válido; si no, la fecha
+      // del oficio si es válida; si no hay ninguno, la fecha actual.
+      let segmentoNumeroOficio: string;
+      if (numeroOficioValido) {
+        segmentoNumeroOficio = numeroOficioDigitos;
+      } else if (fechaOficioValida) {
+        segmentoNumeroOficio = fechaOficioDigitos;
+      } else {
+        segmentoNumeroOficio = fechaActualDDMMAA;
       }
 
-      if (OFICIO_PLACEHOLDER.test(nombreOficioFinal)) {
-        const { mmdd, consecutivo } = await this.dailySequence.getNext();
-        nombreOficioFinal = nombreOficioFinal.replace(
-          OFICIO_PLACEHOLDER,
-          `${mmdd}${consecutivo}`,
-        );
-      }
+      // Segmento consecutivo (8 chars finales): SIEMPRE {MMDD}{consecutivo4}
+      // (mes-día + contador diario atómico), sin importar qué devolvió el
+      // modelo — antes NO se generaba cuando el modelo mandaba "0" pelado.
+      const { mmdd, consecutivo } = await this.dailySequence.getNext();
+      const segmentoConsecutivo = `${mmdd}${consecutivo}`;
+
+      let nombreOficioFinal = `${segmentoNumeroOficio} DEL ${segmentoFecha} ${segmentoConsecutivo}`;
       oficio.nombreOficioFinal = nombreOficioFinal;
 
       // Cinturón y tirantes: recorta nombreOficioFinal a 40 caracteres.
-      // Se aplica DESPUÉS de resolver el placeholder/consecutivo arriba,
-      // para no cortar el consecutivo recién inyectado. Solo recorte, sin
-      // mayúsculas (el negocio no lo pide para este campo).
+      // Se aplica DESPUÉS de armar el nombre, para no cortar el consecutivo.
+      // Solo recorte, sin mayúsculas (el negocio no lo pide para este campo).
       if (nombreOficioFinal.length > 40) {
         const recortado = nombreOficioFinal.slice(0, 40);
         this.logger.debug(
