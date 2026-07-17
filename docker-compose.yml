@@ -50,10 +50,10 @@ services:
       - redis
     volumes:
       - ./local:/app/local
-      - ${SERVER_PATH_EMBARGOS}:/app/local/EMBARGOS
-      - ${SERVER_PATH_DESEMBARGOS}:/app/local/DESEMBARGOS
-      - ${SERVER_PATH_ALCANCES}:/app/local/ALCANCES
-      - ${SERVER_PATH_MASIVOS}:/app/local/MASIVOS
+      - ${SERVER_PATH_EMBARGOS}:/app/local/embargos
+      - ${SERVER_PATH_DESEMBARGOS}:/app/local/desembargos
+      - ${SERVER_PATH_ALCANCES}:/app/local/alcances
+      - ${SERVER_PATH_MASIVOS}:/app/local/masivos
       - ${OCR_DESTINATION_HOST_PATH:-./local/ocr-done}:/opt/ocr-done
       - ${EXCEL_DESTINATION_HOST_PATH:-./local/excel-done}:/opt/excel-done
       - ${OCR_UNREADABLE_HOST_PATH:-./local/ocr-unreadable}:/opt/ocr-unreadable
