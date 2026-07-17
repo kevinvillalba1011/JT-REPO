@@ -160,7 +160,7 @@ export class IntegrationService {
 
   /**
    * Normalizes null values in the payload to appropriate defaults.
-   * - tipoAplicacion: null → "0"
+   * - tipoAplicacion: null → "CONGELAR"
    * - Other string fields with null → "0"
    * - Other number fields with null → 0
    * - Arrays with null elements → filtered out
@@ -183,7 +183,7 @@ export class IntegrationService {
     for (const [key, value] of Object.entries(obj)) {
       if (value === null || value === undefined) {
         if (key === 'tipoAplicacion') {
-          normalized[key] = '0';
+          normalized[key] = 'CONGELAR';
         } else {
           normalized[key] = '0';
         }

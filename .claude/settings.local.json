@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:\\\\Trabajo\\\\JT\\\\embargos\" -iname \"ResponseController.java\" 2>/dev/null; find / -iname \"ResponseController.java\" 2>/dev/null | head -5)",
+      "Bash(pnpm test *)",
+      "Bash(npx ng *)",
+      "Bash(./mvnw.cmd -o compile)",
+      "Bash(pnpm lint *)",
+      "Bash(./mvnw.cmd -o clean compile)",
+      "Bash(git -C \"C:\\\\Trabajo\\\\JT\\\\embargos\" status --short)",
+      "Bash(git -C \"C:\\\\Trabajo\\\\JT\\\\embargos\" status --short -- src/ms-process-document-em)",
+      "Bash(tee /tmp/lint_out.txt)",
+      "Bash(grep -E \"^C:.*\\\\.ts$|error|✖\")",
+      "Bash(git stash *)",
+      "Bash(tee /tmp/lint_before.txt)",
+      "Bash(git checkout *)",
+      "Read(//tmp/**)",
+      "Bash(cd C:/Trabajo/JT/JT-REPO && diff /tmp/lint_before.txt /tmp/lint_after.txt)",
+      "Bash(pnpm build *)",
+      "Bash(npx prisma *)",
+      "Skill(code-review)",
+      "Skill(code-review:*)",
+      "Bash(./mvnw.cmd -o -q clean compile)",
+      "Bash(npx eslint *)",
+      "Bash(git status *)"
+    ]
+  }
+}

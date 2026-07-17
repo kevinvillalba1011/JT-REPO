@@ -1,18 +1,18 @@
-version: '3.8'
+version: "3.8"
 
 services:
   db:
     image: postgres:14-alpine
     container_name: jt-db
     ports:
-      - '5432:5432'
+      - "5433:5432"
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
       POSTGRES_DB: ${DB_NAME:-jt_documents}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    restart: 'no'
+    restart: "no"
     networks:
       - jt-network
 
@@ -20,8 +20,8 @@ services:
     image: redis:7-alpine
     container_name: jt-redis-llm
     ports:
-      - '6380:6379' # Mapeamos el puerto 6380 (fuera) al 6379 (dentro)
-    restart: 'no'
+      - "6380:6379" # Mapeamos el puerto 6380 (fuera) al 6379 (dentro)
+    restart: "no"
     networks:
       - jt-network
 
@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
     container_name: jt-app
     ports:
-      - '3000:3000'
+      - "3000:3000"
     env_file:
       - .env
     environment:
@@ -39,33 +39,6 @@ services:
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-jt_documents}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - LOCAL_SOURCE_PATHS=/app/source/1,/app/source/2,/app/source/3,/app/source/masivos
-      # Ruta de la carpeta "masivos" tal como la ve LocalFileStrategy — debe
-      # coincidir EXACTAMENTE con el último elemento de LOCAL_SOURCE_PATHS.
-      # Se usa para (a) restringir esa carpeta a solo Excel/CSV en el escaneo
-      # individual, y (b) que MassiveExcelService localice el PDF asociado a
-      # cada plantilla.
-      - MASIVOS_SOURCE_PATH=/app/source/masivos
-      # System Internal Paths
-      - IN_PATH=/app/local/in
-      - OCR_PATH=/app/local/ocr
-      # Ruta de Excel/CSV procesados y de los PDFs asociados del flujo masivo.
-      # Igual que OCR_DESTINATION_PATH (/opt/ocr-done): debe ser una ruta del
-      # host COMPARTIDA con los servicios que luego leen el PDF (ese string es
-      # el que queda en oficio.rutaPdf). Antes apuntaba a /app/local/excel-done
-      # (ruta interna del contenedor), por lo que rutaPdf salía inservible para
-      # el consumidor externo.
-      - EXCEL_DESTINATION_PATH=/opt/excel-done
-      # Carpeta de archivos no soportados (extensión no admitida o peso mayor
-      # a FILE_MAX_SIZE_MB). Cae bajo el mount de ./local:/app/local.
-      - UNSUPPORTED_PATH=/app/local/unsupported
-      # Ruta de PDFs procesados: se usa tanto para escribir el archivo como para
-      # el valor de oficio.rutaPdf. Debe ser una ruta del host compartida por los
-      # servicios que luego leen el PDF (p.ej. ms-process-document-em).
-      - OCR_DESTINATION_PATH=/opt/ocr-done
-      # Carpeta donde se mueven los PDFs cuyo OCR no extrajo texto (escaneos
-      # ilegibles), para revisión manual desde el host.
-      - OCR_UNREADABLE_PATH=/opt/ocr-unreadable
       # GCP & Gemini
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - GCP_LOCATION=${GCP_LOCATION}
@@ -77,15 +50,15 @@ services:
       - redis
     volumes:
       - ./local:/app/local
-      - ${SERVER_PATH_1}:/app/source/1
-      - ${SERVER_PATH_2}:/app/source/2
-      - ${SERVER_PATH_3}:/app/source/3
-      - ${SERVER_PATH_4}:/app/source/masivos
+      - ${SERVER_PATH_EMBARGOS}:/app/local/EMBARGOS
+      - ${SERVER_PATH_DESEMBARGOS}:/app/local/DESEMBARGOS
+      - ${SERVER_PATH_ALCANCES}:/app/local/ALCANCES
+      - ${SERVER_PATH_MASIVOS}:/app/local/MASIVOS
       - ${OCR_DESTINATION_HOST_PATH:-./local/ocr-done}:/opt/ocr-done
       - ${EXCEL_DESTINATION_HOST_PATH:-./local/excel-done}:/opt/excel-done
       - ${OCR_UNREADABLE_HOST_PATH:-./local/ocr-unreadable}:/opt/ocr-unreadable
       - ./secrets:/app/secrets
-    restart: 'no'
+    restart: "no"
     networks:
       - jt-network
 

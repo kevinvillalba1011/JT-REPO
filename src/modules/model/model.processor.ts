@@ -14,6 +14,11 @@ import { DailySequenceService } from '@/common/services/daily-sequence.service';
 import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { DocumentAiStrategy } from '../ocr/strategies/document-ai.strategy';
+import { parseValorEmbargo } from '@/common/utils/valor-embargo.util';
+import {
+  carpetaFechaBogota,
+  resolverRutaSinColision,
+} from '@/common/utils/file-destination.util';
 
 /** Variantes largas de tipoId aceptadas en el documento, mapeadas a la letra corta del enum. */
 const TIPO_ID_LARGO_A_CORTO: Record<string, string> = {
@@ -321,16 +326,11 @@ export class ModelProcessor extends WorkerHost {
       // respeta. Solo aplica al flujo individual — el flujo masivo (Excel)
       // se llena manual, no se toca. PENDIENTES a propósito (no se tocan
       // todavía): nombreBancoDepositoJudicial, demandados[].nombre,
-      // oficioEmbargoADesembargar, valorEmbargo.
+      // oficioEmbargoADesembargar.
       oficio.cuentaDepositoJudicial = this.normalizeNumericField(
         'cuentaDepositoJudicial',
         oficio.cuentaDepositoJudicial,
         12,
-      );
-      oficio.radicadoOficioADesembargar = this.normalizeNumericField(
-        'radicadoOficioADesembargar',
-        oficio.radicadoOficioADesembargar,
-        23,
       );
 
       if (!resultJson.ente || typeof resultJson.ente !== 'object') {
@@ -386,6 +386,14 @@ export class ModelProcessor extends WorkerHost {
             demandado.numeroRadicado,
             23,
           );
+          demandado.radicadoADesembargar = this.normalizeNumericField(
+            'demandados[].radicadoADesembargar',
+            demandado.radicadoADesembargar,
+            23,
+          );
+          // El modelo transcribe valorEmbargo LITERAL (string, con puntos/comas/$
+          // tal como aparece en el documento) — acá se convierte a entero COP.
+          demandado.valorEmbargo = parseValorEmbargo(demandado.valorEmbargo);
           if (Array.isArray(demandado.cuentas)) {
             for (const cuenta of demandado.cuentas as Record<
               string,
@@ -522,15 +530,33 @@ export class ModelProcessor extends WorkerHost {
 
       // Renombrar el archivo con nombreOficioFinal al moverlo a OCR_DESTINATION_PATH;
       // nombreOficioInicial conserva el nombre original para trazabilidad.
+      // Destino: subcarpeta con la fecha y hora del día (yyyyMMddHHmmss, hora Bogotá) dentro
+      // de OCR_DESTINATION_PATH. Dos documentos distintos pueden generar el
+      // mismo nombreOficioFinal (mismo numeroOficio+fecha, ej. reenvíos o
+      // errores de digitación en el documento origen) — sin anticolisión,
+      // `fs.promises.rename` sobrescribiría el primero y ambos registros en
+      // DB terminarían con `oficio.rutaPdf` apuntando al mismo archivo físico.
+      // `resolverRutaSinColision` agrega un sufijo "_1", "_2"... si el nombre
+      // ya existe. `nombreOficioFinal` (el campo lógico persistido en DB) NO
+      // se toca — solo el nombre del archivo físico puede llevar el sufijo.
       const fileExt = path.extname(filePath);
       const sanitizedFinalName = nombreOficioFinal
         .replace(/[<>:"/\\|?*]/g, '_')
         .trim();
-      const doneFileName =
+      const doneBaseName =
         sanitizedFinalName && sanitizedFinalName !== '0'
-          ? `${sanitizedFinalName}${fileExt}`
-          : path.basename(filePath);
-      const doneFilePath = path.join(this.ocrDestinationPath, doneFileName);
+          ? sanitizedFinalName
+          : path.basename(filePath, fileExt);
+      const doneDestDir = path.join(
+        this.ocrDestinationPath,
+        carpetaFechaBogota(),
+      );
+      await fs.promises.mkdir(doneDestDir, { recursive: true });
+      const doneFilePath = await resolverRutaSinColision(
+        doneDestDir,
+        doneBaseName,
+        fileExt,
+      );
 
       // Move file
       try {

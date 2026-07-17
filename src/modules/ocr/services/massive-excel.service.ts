@@ -8,6 +8,10 @@ import { IntegrationService } from '../../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
 import { mapRowToPayload, SUPPORTED_TIPOS_OFICIO } from './excel-field-mapping';
 import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
+import {
+  carpetaFechaBogota,
+  resolverRutaSinColision,
+} from '@/common/utils/file-destination.util';
 
 export interface BatchResult {
   loteId: string;
@@ -92,7 +96,7 @@ export class MassiveExcelService {
 
     // Paso 3 — Resolver nombreOficioFinal UNA sola vez para todo el lote
     const baseOficio = (rows[0].payload.oficio ?? {}) as Record<string, any>;
-    let nombreOficioFinal =
+    const nombreOficioFinal =
       typeof baseOficio.nombreOficioFinal === 'string'
         ? baseOficio.nombreOficioFinal
         : '';
@@ -172,14 +176,36 @@ export class MassiveExcelService {
     // encontró el PDF, fallback determinístico a "0" — mismo sentinel de
     // "no aplica" usado en el resto del sistema, en vez de apuntar al Excel
     // (que sugeriría falsamente que existe un PDF).
-    const rutaPdf = pdfEncontrado
-      ? path.join(
-          excelDestinationPath,
-          `${nombreOficioFinal}${pdfEncontrado.ext}`,
-        )
-      : '0';
+    // Destino: subcarpeta con la fecha y hora del día (yyyyMMddHHmmss, hora Bogotá),
+    // igual que en el flujo individual (model.processor.ts). Dos Excels
+    // distintos pueden traer el mismo nombreOficioFinal (mismo numeroOficio+
+    // fecha) — `resolverRutaSinColision` agrega sufijo "_1", "_2"... para no
+    // pisar el PDF de un batch anterior. OJO: esta ruta se calcula acá pero
+    // el rename físico ocurre más abajo, después de enviar todos los chunks
+    // (Paso 4) — existe una pequeña ventana de carrera entre este cálculo y
+    // ese rename donde otro proceso podría crear un archivo con el mismo
+    // nombre; se acepta ese riesgo (ventana muy corta, un solo proceso de
+    // Excel a la vez en la práctica).
+    let rutaPdf = '0';
+    if (pdfEncontrado) {
+      const excelDestDateDir = path.join(
+        excelDestinationPath,
+        carpetaFechaBogota(),
+      );
+      await fs.promises.mkdir(excelDestDateDir, { recursive: true });
+      rutaPdf = await resolverRutaSinColision(
+        excelDestDateDir,
+        nombreOficioFinal,
+        pdfEncontrado.ext,
+      );
+    }
 
     const firstPayload = rows[0].payload;
+    // Cada fila del Excel ya trae su propio demandado (1 fila = 1 demandado,
+    // vía mapRowToPayload), incluyendo `radicadoADesembargar` mapeado desde
+    // la columna "RADICADO OFICIO DE EMBARGO A DESEMBARGAR" (ver
+    // excel-field-mapping.ts). No requiere lógica adicional acá: al tomar
+    // `demandados[0]` de cada fila, cada demandado conserva su propio valor.
     const todosLosDemandados = rows
       .map((r) => (r.payload.demandados as any[])?.[0])
       .filter(Boolean);
@@ -237,6 +263,15 @@ export class MassiveExcelService {
     // lanzó una excepción antes de llegar acá (Excel corrupto, startBatch
     // caído, etc.), este bloque nunca se ejecuta y el PDF queda intacto en
     // masivos, sin renombrar ni mover — tal como se pidió.
+    //
+    // Riesgo residual aceptado: si la excepción ocurre DESPUÉS de enviar uno
+    // o más chunks (líneas 227-257) pero ANTES de llegar acá, esos registros
+    // ya quedaron recepcionados en embargos con `rutaPdf` apuntando a una
+    // ruta donde el PDF nunca llega a existir (el rename de este paso nunca
+    // corre). El PDF sigue intacto en la carpeta de masivos, así que
+    // reprocesar el mismo Excel (idempotente por AGENTS.md — el masivo
+    // limpia registros previos del mismo archivo antes de re-insertar)
+    // corrige la ruta en el siguiente intento.
     if (pdfEncontrado) {
       try {
         await fs.promises.rename(pdfEncontrado.filePath, rutaPdf);

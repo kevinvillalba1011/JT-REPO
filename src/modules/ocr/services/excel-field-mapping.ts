@@ -2,6 +2,7 @@
  * Mapeo de encabezados de las plantillas Excel (EMBARGO, DESEMBARGO, ALCANCE)
  * hacia las rutas del JSON final anidado (mismo formato que el perfil davibank).
  */
+import { parseValorEmbargo } from '@/common/utils/valor-embargo.util';
 
 export type FieldType = 'string' | 'number' | 'array';
 
@@ -97,8 +98,11 @@ export const EXCEL_FIELD_MAP: Record<string, FieldMapping> = {
     path: 'oficio.oficioEmbargoADesembargar',
     type: 'string',
   },
+  // Cada fila del Excel es un demandado (ver mapRowToPayload), así que el
+  // radicado a desembargar de cada fila se asigna a SU demandado — no al
+  // oficio compartido — para que cada uno conserve el suyo si difieren.
   'RADICADO OFICIO DE EMBARGO A DESEMBARGAR': {
-    path: 'oficio.radicadoOficioADesembargar',
+    path: 'demandados[0].radicadoADesembargar',
     type: 'string',
   },
 };
@@ -114,7 +118,6 @@ export function buildDefaultPayload(): Record<string, any> {
       nombreOficioInicial: '0',
       nombreOficioFinal: '0',
       oficioEmbargoADesembargar: '0',
-      radicadoOficioADesembargar: '0',
       fechaHoraProcesamientoOficio: '0',
       observaciones: '0',
       tipoRequerimiento: '0',
@@ -139,6 +142,7 @@ export function buildDefaultPayload(): Record<string, any> {
         productosFuturo: '0',
         porcentajeAEmbargar: '0',
         valorEmbargo: 0,
+        radicadoADesembargar: '0',
       },
     ],
     demandantes: [
@@ -161,7 +165,7 @@ export function buildDefaultPayload(): Record<string, any> {
       tipoDocumentoRecibidoEmail: [],
       codigoAlcance: '0',
       codigoAplicacion: '0',
-      tipoAplicacion: '0',
+      tipoAplicacion: 'CONGELAR',
       tipoRespuesta: '0',
       vinculoCliente: '0',
     },
@@ -234,9 +238,10 @@ export function mapRowToPayload(
 
     switch (mapping.type) {
       case 'number': {
-        const num = Number(String(rawValue).replace(/[^\d.-]/g, ''));
-        if (isNaN(num)) return;
-        setByPath(payload, mapping.path, num);
+        // Único caso 'number' hoy es VALOR EMBARGO: usa el mismo parser que
+        // el flujo IA para interpretar correctamente el separador decimal
+        // colombiano (ej. "16.000.000.00" -> 16000000, no 1600000000).
+        setByPath(payload, mapping.path, parseValorEmbargo(rawValue));
         break;
       }
       case 'array': {
