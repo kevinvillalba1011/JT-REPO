@@ -11,6 +11,7 @@ import { ClientService } from '../client/client.service';
 import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interface';
 import { IntegrationService } from '../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
+import { NombreOficioFinalService } from '@/common/services/nombre-oficio-final.service';
 import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { DocumentAiStrategy } from '../ocr/strategies/document-ai.strategy';
@@ -50,6 +51,7 @@ export class ModelProcessor extends WorkerHost {
     private readonly geminiService: GeminiService,
     private readonly integrationService: IntegrationService,
     private readonly dailySequence: DailySequenceService,
+    private readonly nombreOficioFinalService: NombreOficioFinalService,
     private readonly docAiStrategy: DocumentAiStrategy,
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {
@@ -528,17 +530,36 @@ export class ModelProcessor extends WorkerHost {
         oficio.nombreOficioFinal = nombreOficioFinal;
       }
 
+      // Deduplicación PERSISTENTE contra la tabla nombres_oficio_final_usados
+      // (NombreOficioFinalService) — a diferencia de `resolverRutaSinColision`
+      // más abajo (que solo detecta colisiones en el filesystem, dentro de la
+      // subcarpeta de la fecha del día actual), esta reserva es atómica contra
+      // TODA la historia en DB, sin importar cuándo se generó el nombre
+      // anterior (ayer, la semana pasada, etc.). En este flujo individual las
+      // colisiones son raras (el nombre ya incluye fecha + un consecutivo
+      // diario atómico vía DailySequenceService), pero se aplica igual por
+      // consistencia con el flujo masivo. Si el nombre ya existía, el sufijo
+      // "-N" que retorna pasa a ser parte OFICIAL de nombreOficioFinal: se
+      // persiste en Document y se envía al sistema externo (a diferencia del
+      // sufijo de `resolverRutaSinColision`, que es solo cosmético del archivo
+      // físico y nunca toca el campo lógico).
+      nombreOficioFinal =
+        await this.nombreOficioFinalService.resolverUnico(nombreOficioFinal);
+      oficio.nombreOficioFinal = nombreOficioFinal;
+
       // Renombrar el archivo con nombreOficioFinal al moverlo a OCR_DESTINATION_PATH;
       // nombreOficioInicial conserva el nombre original para trazabilidad.
-      // Destino: subcarpeta con la fecha y hora del día (yyyyMMddHHmmss, hora Bogotá) dentro
-      // de OCR_DESTINATION_PATH. Dos documentos distintos pueden generar el
-      // mismo nombreOficioFinal (mismo numeroOficio+fecha, ej. reenvíos o
-      // errores de digitación en el documento origen) — sin anticolisión,
-      // `fs.promises.rename` sobrescribiría el primero y ambos registros en
-      // DB terminarían con `oficio.rutaPdf` apuntando al mismo archivo físico.
-      // `resolverRutaSinColision` agrega un sufijo "_1", "_2"... si el nombre
-      // ya existe. `nombreOficioFinal` (el campo lógico persistido en DB) NO
-      // se toca — solo el nombre del archivo físico puede llevar el sufijo.
+      // Destino: subcarpeta con la fecha del día (yyyyMMdd, hora Bogotá) dentro
+      // de OCR_DESTINATION_PATH. Dos documentos distintos podrían, pese a la
+      // deduplicación de arriba, seguir colisionando en esta carpeta puntual
+      // (ej. dos nombres únicos en DB que se sanitizan al mismo string de
+      // archivo) — sin anticolisión acá también, `fs.promises.rename`
+      // sobrescribiría el primero y ambos registros en DB terminarían con
+      // `oficio.rutaPdf` apuntando al mismo archivo físico.
+      // `resolverRutaSinColision` agrega un sufijo "-1", "-2"... SOLO al
+      // nombre del archivo físico en ese caso — es cosmético y NO se refleja
+      // en `nombreOficioFinal` (distinto del sufijo de NombreOficioFinalService
+      // de arriba, que sí queda en el campo lógico).
       const fileExt = path.extname(filePath);
       const sanitizedFinalName = nombreOficioFinal
         .replace(/[<>:"/\\|?*]/g, '_')

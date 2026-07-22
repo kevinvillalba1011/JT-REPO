@@ -78,6 +78,26 @@ export class DocumentRepository {
     });
   }
 
+  /**
+   * Elimina un Document (y sus stateLogs, vía onDelete: Cascade). Usado
+   * cuando un intento de procesamiento se descarta por completo sin haber
+   * ocurrido (ej. Excel masivo sin PDF asociado): no queda ningún registro,
+   * como si el archivo nunca hubiese sido descubierto — el próximo escaneo
+   * del cron lo vuelve a recoger y crea un Document nuevo si corresponde.
+   */
+  async delete(id: string): Promise<void> {
+    try {
+      await this.prisma.document.delete({ where: { id } });
+    } catch (error: any) {
+      // P2025 = registro no encontrado (ya eliminado por otro intento/job).
+      // No es un error real en ese caso: el resultado deseado (que no exista)
+      // ya se cumple.
+      if (error?.code !== 'P2025') {
+        throw error;
+      }
+    }
+  }
+
   async findAll(): Promise<Document[]> {
     return this.prisma.document.findMany({
       orderBy: { createdAt: 'desc' },

@@ -110,6 +110,91 @@ export const EXCEL_FIELD_MAP: Record<string, FieldMapping> = {
 /** Tipos de oficio soportados, identificados por el nombre de la hoja del Excel. */
 export const SUPPORTED_TIPOS_OFICIO = ['EMBARGO', 'DESEMBARGO', 'ALCANCE'];
 
+/**
+ * Encabezados EXACTOS (texto y orden) de la fila de cabecera de cada
+ * plantilla oficial (`Plantilla_EMBARGO.xlsx`, `Plantilla_DESEMBARGO.xlsx`,
+ * `Plantilla_ALCANCE.xlsx`, raíz del repo), confirmados leyendo esos 3
+ * archivos con exceljs. Es la fuente de verdad que `MassiveExcelService`
+ * usa para rechazar un Excel masivo cuyas columnas no permitan identificar
+ * los campos esperados — ver el comentario junto a la validación en
+ * `massive-excel.service.ts` para el criterio exacto de comparación
+ * (faltantes vs. extra).
+ *
+ * OJO: DESEMBARGO NO es un subconjunto trivial de EMBARGO/ALCANCE — trae
+ * "NO. DE RADICADO" y "TIPO ID DEMANDADO" en posiciones distintas y un set
+ * de columnas mucho más corto.
+ */
+export const PLANTILLA_HEADERS: Record<string, string[]> = {
+  EMBARGO: [
+    'NO ID DEMANDADO',
+    'TIPO DE PROCESO',
+    'NOMBRE OFICIO INICIAL',
+    'NOMBRE OFICIO FINAL',
+    'VALOR EMBARGO',
+    'NO. DE RADICADO',
+    'CUENTA BANCO AGRARIO / BANCO DEPÓSITO JUDICIAL',
+    'NOMBRE BANCO DEPÓSITO JUDICIAL',
+    'NOMBRE DEL SECRETARIO O FUNCIONARIO ENTE EMBARGANTE',
+    'CODIGO DE ALCANCE',
+    'CODIGO DE APLICACIÓN',
+    'TIPO LIMITE DE INEMBARGABILIDAD',
+    'TIPO DE APLICACIÓN',
+    'TIPO RESPUESTA',
+    'TIPO ID DEMANDADO',
+    'NOMBRE DEMANDADO',
+    'TIPO ID DEMANDANTE',
+    'NO ID DEMANDANTE',
+    'NOMBRE DEMANDANTE',
+    'NOMBRE DEL ENTE EMBARGANTE',
+    'CIUDAD',
+    'CORREOS ELECTRÓNICOS',
+    'LINK DE COLOCACIÓN DE RESPUESTA',
+    'PRODUCTOS A EMBARGAR',
+    'SI ES CTA ESPECÍFICA, NO. DE CTA',
+    'PORCENTAJE A EMBARGAR',
+    'PRODUCTOS A FUTURO',
+    'TIPO DOCUMENTO RECIBIDO EN EMAIL',
+    'TIPO DE REQUERIMIENTO',
+    'TIPO DE REQUERIMIENTO INEMBARGABLE',
+    'OBSERVACIONES',
+  ],
+  DESEMBARGO: [
+    'NO ID DEMANDADO',
+    'TIPO DE PROCESO',
+    'NOMBRE OFICIO INICIAL',
+    'NOMBRE OFICIO FINAL',
+    'NO. DE RADICADO',
+    'TIPO ID DEMANDADO',
+    'NOMBRE DEMANDADO',
+    'OFICIO DE EMBARGO A DESEMBARGAR',
+    'RADICADO OFICIO DE EMBARGO A DESEMBARGAR',
+    'TIPO DOCUMENTO RECIBIDO EN EMAIL',
+  ],
+  ALCANCE: [
+    'NO ID DEMANDADO',
+    'TIPO DE PROCESO',
+    'NOMBRE OFICIO INICIAL',
+    'NOMBRE OFICIO FINAL',
+    'VALOR EMBARGO',
+    'NO. DE RADICADO',
+    'CUENTA BANCO AGRARIO / BANCO DEPÓSITO JUDICIAL',
+    'NOMBRE BANCO DEPÓSITO JUDICIAL',
+    'NOMBRE DEL SECRETARIO O FUNCIONARIO ENTE EMBARGANTE',
+    'TIPO DE APLICACIÓN',
+    'TIPO RESPUESTA',
+    'TIPO ID DEMANDADO',
+    'NOMBRE DEMANDADO',
+    'NOMBRE DEMANDANTE',
+    'NOMBRE DEL ENTE EMBARGANTE',
+    'CIUDAD',
+    'CORREOS ELECTRÓNICOS',
+    'LINK DE COLOCACIÓN DE RESPUESTA',
+    'TIPO DOCUMENTO RECIBIDO EN EMAIL',
+    'TIPO DE REQUERIMIENTO',
+    'OBSERVACIONES',
+  ],
+};
+
 /** Estructura por defecto del JSON final, siguiendo la convención del perfil davibank. */
 export function buildDefaultPayload(): Record<string, any> {
   return {
@@ -172,7 +257,14 @@ export function buildDefaultPayload(): Record<string, any> {
   };
 }
 
-function normalizeHeader(header: unknown): string {
+/**
+ * Normaliza un encabezado de columna para comparaciones tolerantes a
+ * espacios/mayúsculas: colapsa espacios repetidos, recorta y pasa a
+ * mayúsculas. Se exporta para que `MassiveExcelService` valide los
+ * encabezados detectados contra `PLANTILLA_HEADERS` con el mismo criterio
+ * que usa `mapRowToPayload` para mapear cada columna.
+ */
+export function normalizeHeader(header: unknown): string {
   if (header === null || header === undefined) {
     return '';
   }

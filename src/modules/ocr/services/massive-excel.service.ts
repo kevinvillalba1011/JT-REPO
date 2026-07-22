@@ -6,7 +6,13 @@ import * as ExcelJS from 'exceljs';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { IntegrationService } from '../../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
-import { mapRowToPayload, SUPPORTED_TIPOS_OFICIO } from './excel-field-mapping';
+import { NombreOficioFinalService } from '@/common/services/nombre-oficio-final.service';
+import {
+  mapRowToPayload,
+  normalizeHeader,
+  PLANTILLA_HEADERS,
+  SUPPORTED_TIPOS_OFICIO,
+} from './excel-field-mapping';
 import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
 import {
   carpetaFechaBogota,
@@ -19,6 +25,37 @@ export interface BatchResult {
   fallidos: number;
   filasFallidas: number[];
   lotesEnviados: Record<string, any>[];
+}
+
+/**
+ * Se lanza cuando el PDF asociado (1 Excel = 1 PDF) no se encuentra en
+ * MASIVOS_SOURCE_PATH antes de tocar cualquier otro sistema. `MasivoProcessor`
+ * la distingue de un error genérico para devolver el Excel intacto a su
+ * carpeta original en vez de marcarlo como error permanente o reintentarlo.
+ */
+export class PdfAsociadoNoEncontradoError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PdfAsociadoNoEncontradoError';
+  }
+}
+
+/**
+ * Se lanza cuando la fila de encabezados del Excel masivo no permite
+ * identificar de forma confiable las columnas esperadas por la plantilla
+ * oficial (tipo de oficio no reconocido, o encabezados esperados
+ * ausentes — ver criterio exacto en `validarEncabezadosPlantilla`).
+ * `MasivoProcessor` la distingue de un error genérico para devolver el
+ * Excel intacto a su carpeta original (mismo tratamiento que
+ * `PdfAsociadoNoEncontradoError`) en vez de marcarlo como error permanente
+ * o reintentarlo — el archivo queda exactamente como si nunca hubiera sido
+ * descubierto.
+ */
+export class PlantillaExcelInvalidaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PlantillaExcelInvalidaError';
+  }
 }
 
 interface ParsedRow {
@@ -38,27 +75,39 @@ export class MassiveExcelService {
     private readonly configService: ConfigService,
     private readonly integrationService: IntegrationService,
     private readonly dailySequence: DailySequenceService,
+    private readonly nombreOficioFinalService: NombreOficioFinalService,
   ) {}
 
   async process(filePath: string, fileName: string): Promise<BatchResult> {
     this.logger.verbose(
-      `[1/4] Iniciando procesamiento de Excel masivo: ${fileName}`,
+      `[1/5] Iniciando procesamiento de Excel masivo: ${fileName}`,
     );
 
     await this.prisma.excelRecord.deleteMany({
       where: { excelName: fileName },
     });
     this.logger.log(
-      `[1/4] Registros previos de ${fileName} eliminados (idempotencia).`,
+      `[1/5] Registros previos de ${fileName} eliminados (idempotencia).`,
     );
 
     // Paso 1 — Parsear todas las filas
-    const { tipoOficio, rows } = await this.parseWorkbook(filePath);
+    const { tipoOficio, rows, headers } = await this.parseWorkbook(filePath);
     const totalRegistros = rows.length;
 
     this.logger.log(
-      `[1/4] Tipo detectado: ${tipoOficio}. Total filas parseadas: ${totalRegistros}`,
+      `[1/5] Tipo detectado: ${tipoOficio}. Total filas parseadas: ${totalRegistros}`,
     );
+
+    // Paso 1 (cont.) — Validar que los encabezados detectados correspondan a
+    // la plantilla oficial del tipo de oficio detectado, ANTES de la
+    // búsqueda del PDF asociado (Paso 2) y de cualquier otro efecto
+    // secundario — si la plantilla está mal, ni vale la pena buscar el PDF.
+    // Ver criterio exacto de aceptación/rechazo en
+    // `validarEncabezadosPlantilla`. Si falla, lanza
+    // PlantillaExcelInvalidaError, que MasivoProcessor atrapa para devolver
+    // el Excel intacto a MASIVOS_SOURCE_PATH (mismo tratamiento que
+    // PdfAsociadoNoEncontradoError).
+    this.validarEncabezadosPlantilla(tipoOficio, headers);
 
     if (totalRegistros === 0) {
       return {
@@ -70,53 +119,16 @@ export class MassiveExcelService {
       };
     }
 
-    // Paso 2 — Notificar al receptor y esperar el loteId antes de continuar
-    const tipoOficioMasivo = `${tipoOficio} MASIVO`;
-
-    const loteSize = this.configService.get<number>(
-      'INTEGRATION_LOTE_SIZE',
-      100,
-    );
-    const cantidadLotes = Math.ceil(totalRegistros / loteSize);
-
-    this.logger.log(
-      `[2/4] Solicitando inicio de lote: nombreArchivo=${fileName}, cantidadLotes=${cantidadLotes}, totalRegistros=${totalRegistros}, tipoOficio=${tipoOficioMasivo}`,
-    );
-
-    const loteId = await this.integrationService.startBatch(
-      fileName,
-      cantidadLotes,
-      totalRegistros,
-      tipoOficioMasivo,
-    );
-
-    this.logger.log(
-      `[2/4] loteId obtenido: ${loteId}. Construyendo payload consolidado.`,
-    );
-
-    // Paso 3 — Resolver nombreOficioFinal UNA sola vez para todo el lote
-    const baseOficio = (rows[0].payload.oficio ?? {}) as Record<string, any>;
-    const nombreOficioFinal =
-      typeof baseOficio.nombreOficioFinal === 'string'
-        ? baseOficio.nombreOficioFinal
-        : '';
-    // Para masivos, el usuario requiere que el nombre sea literal y NO se
-    // reemplace el placeholder (ej. 00000000) por la secuencia diaria.
-    // if (OFICIO_PLACEHOLDER.test(nombreOficioFinal)) {
-    //   const { mmdd, consecutivo } = await this.dailySequence.getNext();
-    //   nombreOficioFinal = nombreOficioFinal.replace(
-    //     OFICIO_PLACEHOLDER,
-    //     `${mmdd}${consecutivo}`,
-    //   );
-    // }
-
-    // Paso 3.5 — Localizar el PDF original asociado (1 Excel = 1 PDF,
-    // confirmado por el usuario). La persona que llenó la plantilla leyó
-    // este PDF, que hoy sigue "en espera" en MASIVOS_SOURCE_PATH porque
+    // Paso 2 — Localizar el PDF original asociado (1 Excel = 1 PDF,
+    // confirmado por el usuario) ANTES de tocar cualquier otro sistema
+    // (receptor externo, DB). La persona que llenó la plantilla leyó este
+    // PDF, que hoy sigue "en espera" en MASIVOS_SOURCE_PATH porque
     // LocalFileStrategy excluye PDFs/imágenes de esa carpeta del escaneo
-    // individual (ver local-file.strategy.ts). Solo se localiza acá — el
-    // renombrado/movido físico ocurre al final, después de que el batch
-    // completo termine sin lanzar excepción.
+    // individual (ver local-file.strategy.ts). Si no aparece, se rechaza el
+    // Excel completo sin ningún efecto secundario — MasivoProcessor
+    // atrapa PdfAsociadoNoEncontradoError y devuelve el Excel intacto a
+    // MASIVOS_SOURCE_PATH; el PDF, que nunca se tocó, sigue ahí también.
+    const baseOficio = (rows[0].payload.oficio ?? {}) as Record<string, any>;
     const nombreOficioInicial =
       typeof baseOficio.nombreOficioInicial === 'string'
         ? baseOficio.nombreOficioInicial
@@ -128,6 +140,72 @@ export class MassiveExcelService {
     const pdfEncontrado = await this.localizarPdfEnMasivos(
       nombreOficioInicial,
       masivosSourcePath,
+    );
+
+    if (!pdfEncontrado) {
+      throw new PdfAsociadoNoEncontradoError(
+        `No se encontró en "${masivosSourcePath}" el PDF asociado a "${fileName}" ` +
+          `(NOMBRE OFICIO INICIAL="${nombreOficioInicial}"). El Excel no se procesa.`,
+      );
+    }
+
+    this.logger.log(
+      `[2/5] PDF asociado localizado: "${pdfEncontrado.filePath}".`,
+    );
+
+    // Paso 3 — Notificar al receptor y esperar el loteId antes de continuar
+    const tipoOficioMasivo = `${tipoOficio} MASIVO`;
+
+    const loteSize = this.configService.get<number>(
+      'INTEGRATION_LOTE_SIZE',
+      100,
+    );
+    const cantidadLotes = Math.ceil(totalRegistros / loteSize);
+
+    this.logger.log(
+      `[3/5] Solicitando inicio de lote: nombreArchivo=${fileName}, cantidadLotes=${cantidadLotes}, totalRegistros=${totalRegistros}, tipoOficio=${tipoOficioMasivo}`,
+    );
+
+    const loteId = await this.integrationService.startBatch(
+      fileName,
+      cantidadLotes,
+      totalRegistros,
+      tipoOficioMasivo,
+    );
+
+    this.logger.log(
+      `[3/5] loteId obtenido: ${loteId}. Construyendo payload consolidado.`,
+    );
+
+    // Paso 4 — Resolver nombreOficioFinal UNA sola vez para todo el lote
+    const nombreOficioFinalCandidato =
+      typeof baseOficio.nombreOficioFinal === 'string'
+        ? baseOficio.nombreOficioFinal
+        : '';
+    // Para masivos, el usuario requiere que el nombre sea literal y NO se
+    // reemplace el placeholder (ej. 00000000) por la secuencia diaria.
+    // if (OFICIO_PLACEHOLDER.test(nombreOficioFinalCandidato)) {
+    //   const { mmdd, consecutivo } = await this.dailySequence.getNext();
+    //   nombreOficioFinalCandidato = nombreOficioFinalCandidato.replace(
+    //     OFICIO_PLACEHOLDER,
+    //     `${mmdd}${consecutivo}`,
+    //   );
+    // }
+
+    // Paso 4 (cont.) — Reservar nombreOficioFinal de forma atómica en la
+    // tabla nombres_oficio_final_usados (NombreOficioFinalService). Se hace
+    // acá, DESPUÉS de haber confirmado en el Paso 2 que el PDF asociado
+    // existe: no queremos reservar un nombre "de negocio" para un Excel que
+    // ya sabemos que se iba a rechazar. La deduplicación es contra TODA la
+    // historia en DB (no solo el filesystem del día actual, como hace
+    // `resolverRutaSinColision` más abajo para el archivo físico) — así se
+    // detectan colisiones con nombres usados cualquier día anterior. Si el
+    // nombre ya existía, el sufijo "-N" que retorna pasa a ser parte OFICIAL
+    // de nombreOficioFinal: se persiste en ExcelRecord, se envía al sistema
+    // externo, y se usa también para nombrar el PDF físico (ver rutaPdf más
+    // abajo).
+    const nombreOficioFinal = await this.nombreOficioFinalService.resolverUnico(
+      nombreOficioFinalCandidato,
     );
 
     // Inyectar idLote, tipoOficio MASIVO y nombreOficioFinal resuelto en cada fila
@@ -155,10 +233,10 @@ export class MassiveExcelService {
           data: data.slice(i, i + BATCH_SIZE),
         });
       }
-      this.logger.log(`[2/4] ${data.length} filas persistidas en ExcelRecord.`);
+      this.logger.log(`[4/5] ${data.length} filas persistidas en ExcelRecord.`);
     }
 
-    // Paso 3 — Armar payloads por chunk (un envío por lote)
+    // Paso 4 (cont.) — Armar payloads por chunk (un envío por lote)
     // path.resolve(process.cwd(), ...) para que quede SIEMPRE absoluto,
     // igual que ocrDestinationPath en el flujo individual (model.processor.ts)
     // — sin esto, rutaPdf quedaría relativo si EXCEL_DESTINATION_PATH en el
@@ -172,33 +250,29 @@ export class MassiveExcelService {
       ),
     );
     // rutaPdf apunta al PDF asociado (ruta final que tendrá tras renombrarse
-    // a nombreOficioFinal y moverse a excel-done), NO al Excel. Si no se
-    // encontró el PDF, fallback determinístico a "0" — mismo sentinel de
-    // "no aplica" usado en el resto del sistema, en vez de apuntar al Excel
-    // (que sugeriría falsamente que existe un PDF).
-    // Destino: subcarpeta con la fecha y hora del día (yyyyMMddHHmmss, hora Bogotá),
+    // a nombreOficioFinal y moverse a excel-done), NO al Excel. A esta altura
+    // pdfEncontrado siempre está definido (Paso 2 ya rechazó el Excel si no
+    // se encontró), así que rutaPdf siempre queda resuelta a una ruta real.
+    // Destino: subcarpeta con la fecha del día (yyyyMMdd, hora Bogotá),
     // igual que en el flujo individual (model.processor.ts). Dos Excels
     // distintos pueden traer el mismo nombreOficioFinal (mismo numeroOficio+
-    // fecha) — `resolverRutaSinColision` agrega sufijo "_1", "_2"... para no
+    // fecha) — `resolverRutaSinColision` agrega sufijo "-1", "-2"... para no
     // pisar el PDF de un batch anterior. OJO: esta ruta se calcula acá pero
     // el rename físico ocurre más abajo, después de enviar todos los chunks
-    // (Paso 4) — existe una pequeña ventana de carrera entre este cálculo y
+    // (Paso 5) — existe una pequeña ventana de carrera entre este cálculo y
     // ese rename donde otro proceso podría crear un archivo con el mismo
     // nombre; se acepta ese riesgo (ventana muy corta, un solo proceso de
     // Excel a la vez en la práctica).
-    let rutaPdf = '0';
-    if (pdfEncontrado) {
-      const excelDestDateDir = path.join(
-        excelDestinationPath,
-        carpetaFechaBogota(),
-      );
-      await fs.promises.mkdir(excelDestDateDir, { recursive: true });
-      rutaPdf = await resolverRutaSinColision(
-        excelDestDateDir,
-        nombreOficioFinal,
-        pdfEncontrado.ext,
-      );
-    }
+    const excelDestDateDir = path.join(
+      excelDestinationPath,
+      carpetaFechaBogota(),
+    );
+    await fs.promises.mkdir(excelDestDateDir, { recursive: true });
+    const rutaPdf = await resolverRutaSinColision(
+      excelDestDateDir,
+      nombreOficioFinal,
+      pdfEncontrado.ext,
+    );
 
     const firstPayload = rows[0].payload;
     // Cada fila del Excel ya trae su propio demandado (1 fila = 1 demandado,
@@ -221,7 +295,7 @@ export class MassiveExcelService {
     const filasFallidas: number[] = [];
 
     this.logger.log(
-      `[3/4] Enviando ${chunks.length} lote(s) con hasta ${loteSize} demandados cada uno (loteId=${loteId}).`,
+      `[4/5] Enviando ${chunks.length} lote(s) con hasta ${loteSize} demandados cada uno (loteId=${loteId}).`,
     );
 
     for (let idx = 0; idx < chunks.length; idx++) {
@@ -256,41 +330,39 @@ export class MassiveExcelService {
       }
     }
 
-    // Paso 4 — Renombrar y mover el PDF asociado a excel-done, junto con el
+    // Paso 5 — Renombrar y mover el PDF asociado a excel-done, junto con el
     // Excel. Se hace acá, al final, DESPUÉS de completar el batch (éxito o
     // con fallas parciales por fila — mismo criterio que ya usa el Excel,
     // que se mueve a excel-done sin importar filasFallidas). Si el batch
     // lanzó una excepción antes de llegar acá (Excel corrupto, startBatch
     // caído, etc.), este bloque nunca se ejecuta y el PDF queda intacto en
-    // masivos, sin renombrar ni mover — tal como se pidió.
+    // masivos, sin renombrar ni mover.
     //
     // Riesgo residual aceptado: si la excepción ocurre DESPUÉS de enviar uno
-    // o más chunks (líneas 227-257) pero ANTES de llegar acá, esos registros
-    // ya quedaron recepcionados en embargos con `rutaPdf` apuntando a una
-    // ruta donde el PDF nunca llega a existir (el rename de este paso nunca
-    // corre). El PDF sigue intacto en la carpeta de masivos, así que
-    // reprocesar el mismo Excel (idempotente por AGENTS.md — el masivo
-    // limpia registros previos del mismo archivo antes de re-insertar)
-    // corrige la ruta en el siguiente intento.
-    if (pdfEncontrado) {
+    // o más chunks pero ANTES de llegar acá, esos registros ya quedaron
+    // recepcionados en embargos con `rutaPdf` apuntando a una ruta donde el
+    // PDF nunca llega a existir (el rename de este paso nunca corre). El PDF
+    // sigue intacto en la carpeta de masivos, así que reprocesar el mismo
+    // Excel (idempotente por AGENTS.md — el masivo limpia registros previos
+    // del mismo archivo antes de re-insertar) corrige la ruta en el
+    // siguiente intento.
+    try {
+      await fs.promises.rename(pdfEncontrado.filePath, rutaPdf);
+    } catch {
       try {
-        await fs.promises.rename(pdfEncontrado.filePath, rutaPdf);
-      } catch {
-        try {
-          await fs.promises.copyFile(pdfEncontrado.filePath, rutaPdf);
-          await fs.promises.unlink(pdfEncontrado.filePath);
-        } catch (moveErr: unknown) {
-          const msg =
-            moveErr instanceof Error ? moveErr.message : String(moveErr);
-          this.logger.error(
-            `No se pudo mover el PDF asociado "${pdfEncontrado.filePath}" a "${rutaPdf}": ${msg}`,
-          );
-        }
+        await fs.promises.copyFile(pdfEncontrado.filePath, rutaPdf);
+        await fs.promises.unlink(pdfEncontrado.filePath);
+      } catch (moveErr: unknown) {
+        const msg =
+          moveErr instanceof Error ? moveErr.message : String(moveErr);
+        this.logger.error(
+          `No se pudo mover el PDF asociado "${pdfEncontrado.filePath}" a "${rutaPdf}": ${msg}`,
+        );
       }
-      this.logger.log(
-        `[4/4] PDF asociado renombrado y movido: "${pdfEncontrado.filePath}" -> "${rutaPdf}".`,
-      );
     }
+    this.logger.log(
+      `[5/5] PDF asociado renombrado y movido: "${pdfEncontrado.filePath}" -> "${rutaPdf}".`,
+    );
 
     const result: BatchResult = {
       loteId,
@@ -301,7 +373,7 @@ export class MassiveExcelService {
     };
 
     this.logger.log(
-      `[4/4] Batch finalizado. loteId=${loteId} enviados=${result.enviados} fallidos=${result.fallidos}`,
+      `[5/5] Batch finalizado. loteId=${loteId} enviados=${result.enviados} fallidos=${result.fallidos}`,
     );
 
     return result;
@@ -383,6 +455,7 @@ export class MassiveExcelService {
   private async parseWorkbook(filePath: string): Promise<{
     tipoOficio: string;
     rows: ParsedRow[];
+    headers: any[];
   }> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(filePath);
@@ -400,7 +473,7 @@ export class MassiveExcelService {
     const fechaProcesamiento = nowBogotaISOString();
 
     if (dataRows.length === 0) {
-      return { tipoOficio, rows: [] };
+      return { tipoOficio, rows: [], headers: [] };
     }
 
     // La primera fila puede ser un título ("PLANTILLA DE DILIGENCIAMIENTO — ...")
@@ -486,7 +559,68 @@ export class MassiveExcelService {
       });
     }
 
-    return { tipoOficio, rows };
+    return { tipoOficio, rows, headers };
+  }
+
+  /**
+   * Valida que los encabezados detectados en la fila de cabecera del Excel
+   * permitan identificar, sin ambigüedad, las columnas que exige la
+   * plantilla oficial (`Plantilla_EMBARGO.xlsx`, `Plantilla_DESEMBARGO.xlsx`,
+   * `Plantilla_ALCANCE.xlsx`, ver `PLANTILLA_HEADERS`) correspondiente al
+   * `tipoOficio` detectado. Se llama desde `process()` INMEDIATAMENTE
+   * DESPUÉS de `parseWorkbook` y ANTES de la búsqueda del PDF asociado
+   * (Paso 2) — si la plantilla está mal, ni vale la pena buscar el PDF.
+   *
+   * Criterio EXACTO de aceptación/rechazo:
+   *  - Tipo de oficio no reconocido: si `resolveTipoOficio` no pudo mapear
+   *    ni el nombre de hoja ni el nombre de archivo a uno de
+   *    SUPPORTED_TIPOS_OFICIO (queda en 'DESCONOCIDO'), se rechaza de
+   *    inmediato — no existe ninguna plantilla de referencia contra la cual
+   *    comparar encabezados.
+   *  - Encabezados FALTANTES: cualquier encabezado presente en
+   *    `PLANTILLA_HEADERS[tipoOficio]` que no aparezca (tras normalizar con
+   *    `normalizeHeader`, igual que `mapRowToPayload`) entre los
+   *    encabezados detectados en el Excel rechaza el archivo completo. Sin
+   *    esa columna, `mapRowToPayload` no tiene forma de ubicar ese dato y
+   *    lo dejaría silenciosamente en su valor por defecto ('0' o []) —
+   *    exactamente el resultado que esta validación existe para evitar.
+   *  - Encabezados EXTRA (columnas presentes en el Excel que no aparecen en
+   *    la plantilla, ej. notas internas del área que llenó el archivo) NO
+   *    rechazan el Excel: `mapRowToPayload` ya las ignora en silencio
+   *    (`normalizeHeader` no matchea ninguna entrada de `EXCEL_FIELD_MAP`),
+   *    sin afectar el mapeo de las demás columnas.
+   *  - El ORDEN de las columnas NO se valida: `mapRowToPayload` ubica cada
+   *    valor por el texto de encabezado de su propia columna (búsqueda por
+   *    nombre, no por posición — ver `EXCEL_FIELD_MAP`), así que reordenar
+   *    columnas dentro de la misma hoja no rompe el mapeo ni debe rechazar
+   *    el Excel.
+   */
+  private validarEncabezadosPlantilla(tipoOficio: string, headers: any[]): void {
+    if (!SUPPORTED_TIPOS_OFICIO.includes(tipoOficio)) {
+      throw new PlantillaExcelInvalidaError(
+        `No se pudo identificar el tipo de oficio del Excel (el nombre de la ` +
+          `hoja ni el nombre del archivo coinciden con ninguna plantilla ` +
+          `soportada: [${SUPPORTED_TIPOS_OFICIO.join(', ')}]). El Excel no se procesa.`,
+      );
+    }
+
+    const headersDetectados = new Set(
+      headers
+        .map((h) => normalizeHeader(h))
+        .filter((h) => h.length > 0),
+    );
+
+    const headersEsperados = PLANTILLA_HEADERS[tipoOficio] ?? [];
+    const faltantes = headersEsperados.filter(
+      (h) => !headersDetectados.has(normalizeHeader(h)),
+    );
+
+    if (faltantes.length > 0) {
+      throw new PlantillaExcelInvalidaError(
+        `El Excel no coincide con la plantilla oficial de "${tipoOficio}": ` +
+          `faltan las columnas [${faltantes.join(', ')}]. El Excel no se procesa.`,
+      );
+    }
   }
 
   /** Detecta el tipo de oficio por nombre de hoja, con fallback al nombre del archivo. */
@@ -513,7 +647,7 @@ export class MassiveExcelService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       this.logger.debug(
-        `[3/4] Enviando batch loteId=${loteId} (intento ${attempt}/${maxRetries})`,
+        `[4/5] Enviando batch loteId=${loteId} (intento ${attempt}/${maxRetries})`,
       );
       try {
         const sent = await this.integrationService.sendData(
@@ -522,7 +656,7 @@ export class MassiveExcelService {
         );
         if (sent) {
           this.logger.debug(
-            `[3/4] Batch loteId=${loteId} enviado correctamente.`,
+            `[4/5] Batch loteId=${loteId} enviado correctamente.`,
           );
           return true;
         }

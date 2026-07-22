@@ -6,7 +6,11 @@ import { DocumentState } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { MassiveExcelService } from './services/massive-excel.service';
+import {
+  MassiveExcelService,
+  PdfAsociadoNoEncontradoError,
+  PlantillaExcelInvalidaError,
+} from './services/massive-excel.service';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 
 /**
@@ -37,6 +41,7 @@ export class MasivoProcessor extends WorkerHost {
   private readonly logger = new Logger(MasivoProcessor.name);
   private readonly excelDestinationPath: string;
   private readonly unreadablePath: string;
+  private readonly masivosSourcePath: string;
 
   constructor(
     private readonly documentRepository: DocumentRepository,
@@ -57,6 +62,10 @@ export class MasivoProcessor extends WorkerHost {
         'OCR_UNREADABLE_PATH',
         './local/ocr-unreadable',
       ),
+    );
+    this.masivosSourcePath = this.configService.get<string>(
+      'MASIVOS_SOURCE_PATH',
+      '',
     );
   }
 
@@ -165,6 +174,42 @@ export class MasivoProcessor extends WorkerHost {
         errorStack,
       );
 
+      // No se encontró el PDF asociado (1 Excel = 1 PDF): a diferencia de un
+      // error real, acá no se llegó a tocar el receptor externo ni la DB de
+      // negocio (la validación corre ANTES en MassiveExcelService.process),
+      // así que no es "error permanente para revisión" ni "reintentar" —
+      // es "todavía no". El Excel se devuelve intacto a MASIVOS_SOURCE_PATH
+      // (mismo lugar donde el PDF, que nunca se tocó, sigue esperando) y no
+      // queda ningún Document huérfano: el próximo escaneo del cron lo
+      // vuelve a recoger y reintenta la validación desde cero.
+      if (error instanceof PdfAsociadoNoEncontradoError) {
+        await this.devolverArchivoAOrigen(
+          documentId,
+          filePath,
+          originalPath,
+          'PDF asociado no encontrado',
+        );
+        return;
+      }
+
+      // Encabezados de la plantilla inválidos (columnas faltantes o tipo de
+      // oficio no reconocido, ver `validarEncabezadosPlantilla` en
+      // MassiveExcelService): mismo criterio que PdfAsociadoNoEncontradoError
+      // — la validación corre ANTES de tocar el receptor externo o la DB de
+      // negocio, así que tampoco es "error permanente para revisión" ni
+      // "reintentar". El Excel se devuelve intacto a MASIVOS_SOURCE_PATH sin
+      // dejar ningún Document huérfano; el usuario corrige la plantilla y el
+      // próximo escaneo del cron lo vuelve a recoger.
+      if (error instanceof PlantillaExcelInvalidaError) {
+        await this.devolverArchivoAOrigen(
+          documentId,
+          filePath,
+          originalPath,
+          'Plantilla de columnas inválida',
+        );
+        return;
+      }
+
       // Errores permanentes (Excel corrupto/ilegible, credenciales, etc.)
       // nunca van a cambiar con un reintento: cortamos de inmediato en vez
       // de gastar 3 intentos con backoff. El resto (ej. receptor externo
@@ -234,6 +279,56 @@ export class MasivoProcessor extends WorkerHost {
         dbError instanceof Error ? dbError.message : String(dbError);
       this.logger.error(`Failed to update document state: ${dbErrorMessage}`);
     }
+  }
+
+  /**
+   * Devuelve el Excel a su carpeta original (MASIVOS_SOURCE_PATH) sin
+   * procesarlo, y elimina el Document creado para este intento — no hubo
+   * ningún efecto secundario real que registrar (ver comentario en el
+   * `catch` de `process`). `originalPath` viene de `job.data` (ver
+   * `ExtractionService.processFile`); en el camino de recuperación tras un
+   * reinicio no se propaga, así que se reconstruye a partir de
+   * MASIVOS_SOURCE_PATH + nombre de archivo como fallback.
+   *
+   * `motivo` es solo para el mensaje de log — generalizado para que tanto
+   * PdfAsociadoNoEncontradoError como PlantillaExcelInvalidaError (y
+   * cualquier validación temprana futura del mismo estilo) reutilicen la
+   * misma lógica de mover archivo + borrar Document sin duplicarla.
+   */
+  private async devolverArchivoAOrigen(
+    documentId: string,
+    filePath: string,
+    originalPath: string | undefined,
+    motivo: string,
+  ): Promise<void> {
+    const destino =
+      originalPath || path.join(this.masivosSourcePath, path.basename(filePath));
+
+    this.logger.warn(
+      `Document ${documentId}: ${motivo}. Devolviendo Excel a "${destino}" sin procesar.`,
+    );
+
+    if (!fs.existsSync(filePath)) {
+      this.logger.warn(
+        `Document ${documentId}: el Excel ya no está en "${filePath}" (posible reintento/job duplicado); no se mueve nada.`,
+      );
+    } else {
+      try {
+        await fs.promises.mkdir(path.dirname(destino), { recursive: true });
+        await fs.promises.rename(filePath, destino);
+      } catch {
+        try {
+          await fs.promises.copyFile(filePath, destino);
+          await fs.promises.unlink(filePath);
+        } catch (moveErr: any) {
+          this.logger.error(
+            `Document ${documentId}: no se pudo devolver el Excel a "${destino}": ${moveErr.message}`,
+          );
+        }
+      }
+    }
+
+    await this.documentRepository.delete(documentId);
   }
 
   /**

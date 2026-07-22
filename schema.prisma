@@ -98,3 +98,21 @@ model DailySequence {
 
   @@map("daily_sequences")
 }
+
+// Registro persistente de cada nombreOficioFinal ya asignado (flujo individual
+// o masivo), usado para deduplicar contra TODA la historia en DB — no solo
+// contra el filesystem del día actual (ver resolverRutaSinColision, que sí
+// tiene esa limitación). El constraint UNIQUE en nombreOficioFinal es lo que
+// permite que NombreOficioFinalService reserve un nombre de forma atómica
+// (INSERT que falla con P2002 si el nombre ya existe, sin ventana de carrera
+// entre "verificar" y "guardar"). No se modela como columna de Document ni de
+// ExcelRecord porque esta tabla no representa el ciclo de vida de NINGUNO de
+// los dos — es la sombrilla de nombres de negocio ya asignados, compartida
+// por ambos flujos.
+model NombreOficioFinalUsado {
+  id                String   @id @default(uuid())
+  nombreOficioFinal String   @unique @map("nombre_oficio_final")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("nombres_oficio_final_usados")
+}
