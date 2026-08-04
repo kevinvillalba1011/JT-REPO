@@ -8,7 +8,7 @@ export const DavibankProfile: TenantProfile = {
     'oficio.tipoOficio',
     'oficio.nombreOficioInicial',
     'oficio.nombreOficioFinal',
-    'oficio.oficioEmbargoADesembargar',
+    'demandados[0].oficioEmbargoADesembargar',
     'demandados[0].radicadoADesembargar',
     'oficio.fechaHoraProcesamientoOficio',
     'oficio.observaciones',
@@ -74,12 +74,7 @@ export const DavibankProfile: TenantProfile = {
           nombreOficioFinal: {
             type: SchemaType.STRING,
             description:
-              'Nombre construido del oficio. Estructura: {numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}. Ejemplo: 00906 DEL 290925 00000000. PISTA: tanto el numeroOficio como la fecha del oficio normalmente están en el ENCABEZADO del documento (parte superior) — buscalos ahí primero. El numeroOficio viene de la etiqueta EXPEDIENTE, OFICIO o COMUNICADO — extraer SOLO el número inmediato, SIN el año ("OFICIO N 00906 de 2025" → "00906", NO "009062025"). NUNCA usar números de RESOLUCIÓN. Si no hay etiqueta EXPEDIENTE/OFICIO/COMUNICADO, usar "0". Solo dígitos, máximo 23. La fechaOficio es DDMMAA. Los últimos 8 caracteres se completan en post-procesamiento. Máximo 40 caracteres.',
-          },
-          oficioEmbargoADesembargar: {
-            type: SchemaType.STRING,
-            description:
-              'En DESEMBARGO, número EXCLUSIVO del oficio a dejar sin efecto. Extraer SOLAMENTE los dígitos del número de oficio, resolución o acto administrativo. NO incluir fechas ni texto adicional. Ejemplo correcto: "1128". Ejemplo incorrecto: "1128 DEL 260225" o "RESOLUCION NO. 1128". Máximo 23 caracteres numéricos.',
+              'Nombre construido del oficio. Aplica a los 3 tipos de oficio (EMBARGO, DESEMBARGO y ALCANCE). Estructura: {numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}. Ejemplo: 00906 DEL 290925 00000000. PISTA: tanto el numeroOficio como la fecha del oficio normalmente están en el ENCABEZADO del documento (parte superior) — buscalos ahí primero. El numeroOficio se toma por prioridad: 1) etiqueta EXPEDIENTE, OFICIO o COMUNICADO; 2) SOLO si ninguna de esas existe, se admite como reemplazo el número de RESOLUCIÓN, ACTO ADMINISTRATIVO, RADICADO o PROCESO. Extraer SOLO el número inmediato, SIN el año ("OFICIO N 00906 de 2025" → "00906", NO "009062025"). Si no hay ninguno, usar "0". OJO: este reemplazo por resolución es EXCLUSIVO de este campo — no se aplica a demandados[].oficioEmbargoADesembargar. Solo dígitos, máximo 23. La fechaOficio es DDMMAA. Los últimos 8 caracteres se completan en post-procesamiento. Máximo 40 caracteres.',
           },
           observaciones: {
             type: SchemaType.STRING,
@@ -115,7 +110,6 @@ export const DavibankProfile: TenantProfile = {
         required: [
           'tipoOficio',
           'nombreOficioFinal',
-          'oficioEmbargoADesembargar',
           'observaciones',
           'tipoRequerimiento',
           'tipoRequerimientoInembargable',
@@ -139,17 +133,17 @@ export const DavibankProfile: TenantProfile = {
             numeroId: {
               type: SchemaType.STRING,
               description:
-                'Número de identificación del demandado. Solo dígitos, sin puntos ni comas. Máximo 12 caracteres.',
+                'Número de identificación del demandado, TAL COMO aparece en el documento. Solo dígitos, sin puntos ni comas. Máximo 30 caracteres.',
             },
             numeroRadicado: {
               type: SchemaType.STRING,
               description:
-                'Información que trae el documento, la cual puede encontrarse también con los títulos Resolución, Expediente, Radicado, Proceso o Número de Proceso. Dato numérico, máximo 23 caracteres, sin puntos ni comas. Ejemplo: "68001400300520240075800". En DESEMBARGO, si se citan dos resoluciones (la del embargo original y la del desembargo), usar SIEMPRE la del desembargo — la del embargo original va en oficioEmbargoADesembargar, no acá.',
+                'Información que trae el documento, la cual puede encontrarse también con los títulos Resolución, Expediente, Radicado, Proceso o Número de Proceso. Dato numérico, máximo 23 caracteres, sin puntos ni comas. Ejemplo: "68001400300520240075800". En DESEMBARGO, si se citan dos resoluciones (la del embargo original y la del desembargo), usar SIEMPRE la del desembargo — la del embargo original va en radicadoADesembargar (o en oficioEmbargoADesembargar si viene bajo etiqueta de OFICIO), no acá.',
             },
             nombre: {
               type: SchemaType.STRING,
               description:
-                'Nombre completo del demandado. Máximo 50 caracteres.',
+                'Nombre completo del demandado, TAL COMO aparece en el documento, sin truncar ni abreviar.',
             },
             cuentas: {
               type: SchemaType.ARRAY,
@@ -187,10 +181,15 @@ export const DavibankProfile: TenantProfile = {
               description:
                 'Valor o monto del embargo solicitado. Transcribir LITERALMENTE el valor tal como aparece en el documento, con los mismos puntos, comas y el símbolo $ si lo tiene. NO convertir a número ni quitar separadores — el sistema hace esa conversión en post-procesamiento. Si no se encuentra, usar "0".',
             },
+            oficioEmbargoADesembargar: {
+              type: SchemaType.STRING,
+              description:
+                'Solo en DESEMBARGO: número EXACTO del OFICIO original que se deja sin efecto para ESTE demandado. Solo se acepta el número que aparezca bajo una etiqueta explícita de OFICIO o COMUNICADO (ej. "dejar sin efecto el oficio 1128" → "1128"). PROHIBIDO usar como reemplazo un número de RESOLUCIÓN, ACTO ADMINISTRATIVO, EXPEDIENTE, RADICADO o PROCESO: si no hay un número de OFICIO explícito, usar "0" (ese otro número va en radicadoADesembargar). Nota: si dejas "0" aquí, el sistema lo completa automáticamente en post-procesamiento con la fecha del oficio (o la fecha de procesamiento); vos igual devuelve "0" cuando no encuentres la etiqueta, no intentes rellenar la fecha vos mismo. Extraer SOLAMENTE los dígitos, sin fechas ni texto. Ejemplo incorrecto: "1128 DEL 260225" o "RESOLUCION NO. 1128". Máximo 23 caracteres numéricos.',
+            },
             radicadoADesembargar: {
               type: SchemaType.STRING,
               description:
-                'Solo en DESEMBARGO: número de la resolución o acto administrativo que ordenó el embargo original que ahora se levanta para ESTE demandado. Suele ser el mismo número que oficio.oficioEmbargoADesembargar cuando el oficio levanta un solo embargo. Solo dígitos. Si no aplica o no se encuentra, usar "0".',
+                'Solo en DESEMBARGO: número de la RESOLUCIÓN o acto administrativo que ordenó el embargo original que ahora se levanta para ESTE demandado. Es el campo complementario de oficioEmbargoADesembargar (que solo admite números de OFICIO): cuando el documento cita una resolución y no un oficio, el número va acá. Solo dígitos. Si no aplica o no se encuentra, usar "0".',
             },
           },
           required: [
@@ -202,6 +201,7 @@ export const DavibankProfile: TenantProfile = {
             'productosFuturo',
             'porcentajeAEmbargar',
             'valorEmbargo',
+            'oficioEmbargoADesembargar',
             'radicadoADesembargar',
           ],
         },
@@ -221,12 +221,12 @@ export const DavibankProfile: TenantProfile = {
             numeroId: {
               type: SchemaType.STRING,
               description:
-                'Número de identificación del demandante. Solo dígitos. Máximo 12 caracteres.',
+                'Número de identificación del demandante, TAL COMO aparece en el documento. Solo dígitos. Máximo 30 caracteres.',
             },
             nombre: {
               type: SchemaType.STRING,
               description:
-                'Nombre del demandante o accionante. Máximo 25 caracteres.',
+                'Nombre del demandante o accionante, TAL COMO aparece en el documento, sin truncar ni abreviar.',
             },
           },
           required: ['tipoId', 'numeroId', 'nombre'],
@@ -243,7 +243,7 @@ export const DavibankProfile: TenantProfile = {
           nombreEnteEmbargante: {
             type: SchemaType.STRING,
             description:
-              'Nombre de la entidad que emite la orden (DIAN, JUZGADO, GOBERNACION). Máximo 40 caracteres.',
+              'Nombre de la entidad que emite la orden (DIAN, JUZGADO, GOBERNACION), TAL COMO aparece en el documento, sin truncar ni abreviar.',
           },
           ciudad: {
             type: SchemaType.STRING,
@@ -260,7 +260,7 @@ export const DavibankProfile: TenantProfile = {
             type: SchemaType.ARRAY,
             items: { type: SchemaType.STRING },
             description:
-              'Correos electrónicos válidos encontrados en el documento para respuesta.',
+              'Correos electrónicos válidos encontrados en el documento para respuesta. Cada elemento del array debe contener ÚNICAMENTE la dirección (formato usuario@dominio.tld), en minúsculas y sin NINGÚN carácter adicional: sin viñetas ni guiones de lista ("•", "-", "–"), sin el prefijo "mailto:", sin etiquetas como "Correo:" o "E-mail:", sin delimitadores "<" ">" "(" ")" "[" "]", sin comillas, sin espacios y sin el punto o la coma que cierra la frase. Un elemento = una sola dirección: si varias vienen pegadas por comas, punto y coma o saltos de línea, sepáralas en elementos distintos. Si un fragmento no forma una dirección completa y válida, omítelo del array en lugar de incluirlo a medias.',
           },
           linkColocacionRespuesta: {
             type: SchemaType.STRING,
@@ -306,7 +306,7 @@ export const DavibankProfile: TenantProfile = {
           tipoAplicacion: {
             type: SchemaType.STRING,
             description:
-              'Si dentro del oficio se encuentra las palabras claves exactas "Mantener los recursos en la cuenta", "Congelar", "Congelar Recursos" o "Bloquear" se debe interpretar como "CONGELAR". Si dentro del oficio se encuentra las palabras claves exactas "Consignar", "Debitar" o "Dejar a disposicion" se debe interpretar como "DEBITAR". de lo contrario se debe dejar "CONGELAR".',
+              'Si dentro del oficio se encuentra las palabras claves exactas "Mantener los recursos en la cuenta", "Congelar", "Congelar Recursos" o "Bloquear" se debe interpretar como "CONGELAR". Si dentro del oficio se encuentra las palabras claves exactas "Consignar", "Debitar" o "Dejar a disposicion" se debe interpretar como "DEBITAR". Si no aparece ninguna de esas palabras: en oficios de EMBARGO y ALCANCE se deja "CONGELAR" por defecto; en DESEMBARGO se deja "0".',
           },
           vinculoCliente: {
             type: SchemaType.STRING,
@@ -345,9 +345,16 @@ export const DavibankProfile: TenantProfile = {
 
      1. "oficio": Información general del proceso y del oficio actual (debe incluir cuentaDepositoJudicial, nombreBancoDepositoJudicial).
      2. "demandados": ARRAY de objetos, UNO POR CADA demandado encontrado en el documento.
-        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta), productosFuturo, porcentajeAEmbargar, valorEmbargo, radicadoADesembargar.
+        Cada demandado debe tener: tipoId, numeroId, numeroRadicado, nombre, cuentas (ARRAY con productosAEmbargar, numeroCuenta), productosFuturo, porcentajeAEmbargar, valorEmbargo, oficioEmbargoADesembargar, radicadoADesembargar.
         CRÍTICO — "productosFuturo" va a nivel del demandado, NO dentro de cada cuenta. Nombre exacto del campo en cuentas: "numeroCuenta" (NO "numeroCuentaEspecifica").
-        Si hay múltiples demandados, incluye todos en el array. IMPORTANTE: Si un mismo demandado aparece múltiples veces pero asociado a resoluciones o radicados distintos, DEBES extraerlo como un objeto independiente por cada resolución diferente. No omitas ni agrupes demandados si sus números de radicado varían.
+        Si hay múltiples demandados, incluye todos en el array.
+        CRÍTICO — NUNCA fusiones, agrupes ni deduplipiques demandados por su identidad (mismo nombre o mismo número de identificación). La unidad del array NO es "la persona": es CADA APARICIÓN de esa persona con datos propios. Si el MISMO demandado (mismo nombre y misma cédula/NIT) aparece varias veces asociado a datos distintos, DEBES emitir un objeto INDEPENDIENTE por cada aparición, repitiendo tipoId, numeroId y nombre en todos ellos. Cuenta como "datos distintos" cualquiera de estos:
+          a) CUANTÍAS / VALORES de embargo distintos (ej. el documento lista para la misma persona $5.000.000 y $12.300.000, o un capital y unos intereses por separado, o un valor por cada proceso): un objeto por CADA cuantía, con su valorEmbargo propio. Este es el caso más frecuente y el que NO se debe colapsar: NUNCA sumes las cuantías, NUNCA te quedes solo con la mayor ni con la primera.
+          b) resoluciones, radicados o números de proceso distintos;
+          c) porcentajes a embargar distintos;
+          d) oficios/radicados a desembargar distintos (en DESEMBARGO).
+        Antes de cerrar el array, RECUENTA: la cantidad de objetos en "demandados" debe ser igual a la cantidad de apariciones con datos propios que trae el documento, no a la cantidad de personas distintas. Si el documento trae 1 persona con 3 cuantías, el array debe tener 3 objetos.
+        Las cuentas bancarias SÍ se agrupan dentro del mismo demandado (van en su array "cuentas"): varias cuentas de una misma aparición NO generan objetos separados.
         Si no se especifican cuentas para un demandado, el array "cuentas" puede estar vacío [].
      3. "demandantes": ARRAY de objetos, UNO POR CADA demandante/accionante encontrado.
         Cada uno con: tipoId, numeroId, nombre.
@@ -361,7 +368,8 @@ export const DavibankProfile: TenantProfile = {
       2. DESEMBARGO: Prioridad alta. Cuando cita "DESEMBARGO", "LEVANTAMIENTO", "DEJAR SIN EFECTO", "LIBERACION", "CANCELACION", o "SUSPENDER".
       3. ALCANCE: cuando cita "REITERACION", "REQUERIR", "MANTENIMIENTO", "OFICIAR", "INCIDENTE", "SANCION", "DESACATO", "NOTIFICAR", o "AMPLIAR".
       4. CONFUSIÓN/AMBIGÜEDAD: Si aparecen palabras clave tanto de EMBARGO como de DESEMBARGO y resulta confuso o contradictorio determinar el objetivo principal, clasifícalo OBLIGATORIAMENTE como "ALCANCE".
-      Si clasificas como DESEMBARGO: demandados[].valorEmbargo, porcentajeAEmbargar, cuentas y productosFuturo deben quedar en su fallback ("0", [] o "NO" según corresponda) — no extraigas datos reales del embargo histórico que se está levantando. La ÚNICA excepción es demandados[].radicadoADesembargar, que SÍ debe extraerse en DESEMBARGO (ver BLOQUE 4).
+      Si clasificas como DESEMBARGO: demandados[].valorEmbargo, porcentajeAEmbargar, cuentas y productosFuturo deben quedar en su fallback ("0", [] o "NO" según corresponda) — no extraigas datos reales del embargo histórico que se está levantando. Las ÚNICAS excepciones son demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar, que SÍ deben extraerse en DESEMBARGO (ver BLOQUE 4).
+      Al revés: demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar aplican EXCLUSIVAMENTE a DESEMBARGO. En EMBARGO y en ALCANCE ambos deben quedar en "0", aunque el documento mencione oficios o resoluciones previas.
     - TIPO PROCESO (ente.tipoProceso): "JUDICIAL" si el documento menciona JUZGADO; en cualquier otro caso (incluido EJECUTIVO) es "COACTIVO".
     - TIPO REQUERIMIENTO (oficio.tipoRequerimiento): clasifica en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR. Si no hay, usar "0".
     - TIPO DOCUMENTO RECIBIDO EMAIL (infoCliente.tipoDocumentoRecibidoEmail): clasifica dentro de: LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICIÓN, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, OTRAS ÁREAS.
@@ -371,27 +379,31 @@ export const DavibankProfile: TenantProfile = {
 
     --- BLOQUE 4: REGLAS POR CAMPO ---
     oficio:
-    - NOMBRE OFICIO FINAL (oficio.nombreOficioFinal): Construir con la siguiente estructura estricta: "{numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}". PISTA: tanto el numeroOficio como la fecha del oficio normalmente se encuentran en el ENCABEZADO del documento (parte superior) — buscalos ahí primero. El numeroOficio se busca SOLO bajo etiquetas explícitas como "EXPEDIENTE", "Exp.", "OFICIO N", "OFICIO No." o "COMUNICADO No." (prioridad: 1) EXPEDIENTE, 2) OFICIO, 3) COMUNICADO). IMPORTANTE: extraer SOLO el número inmediato después de la etiqueta, SIN incluir el año ni texto adicional. Ejemplos: "OFICIO N 00906 de 2025" → numeroOficio = "00906" (NO "009062025"); "EXPEDIENTE 4686-2022" → numeroOficio = "46862022" (guiones se eliminan); "COMUNICADO No. 12345" → numeroOficio = "12345". CRÍTICO: numeroOficio NUNCA debe ser un número de RESOLUCIÓN (ni la que ordena embargo, ni la que ordena desembargo). Si no existe una etiqueta EXPEDIENTE/OFICIO/COMUNICADO separada de las resoluciones, usar "0". Máximo 23 dígitos, solo números. Extraer la fecha del oficio o documento y formatearla como DDMMAA (6 dígitos). Los últimos 8 caracteres (4 dígitos día-mes + 4 dígitos consecutivo) se completan en post-procesamiento. Ejemplo: "00906 DEL 290925 00000000". Si no se encuentra número de oficio, usar "0". Si no se encuentra fecha, usar "000000".
-    - OFICIO A DESEMBARGAR (oficio.oficioEmbargoADesembargar): En DESEMBARGO, número EXCLUSIVO del oficio, resolución o acto administrativo ORIGINAL que ordenó el embargo y que ahora se deja sin efecto. Va a nivel de OFICIO (uno solo, aunque haya varios demandados). Extraer SOLAMENTE los dígitos, sin fechas ni texto adicional ni palabras como "RESOLUCION NO.", "OFICIO", "DEL". Ejemplo: si el texto dice "dejar sin efecto el oficio 1128 del 26 de febrero de 2025", capturar únicamente "1128". Máximo 23 caracteres numéricos. Si no hay, usar "0".
+    - NOMBRE OFICIO FINAL (oficio.nombreOficioFinal): Aplica a los TRES tipos de oficio (EMBARGO, DESEMBARGO y ALCANCE). Construir con la siguiente estructura estricta: "{numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}". PISTA: tanto el numeroOficio como la fecha del oficio normalmente se encuentran en el ENCABEZADO del documento (parte superior) — buscalos ahí primero. El numeroOficio se busca por PRIORIDAD: 1) "EXPEDIENTE" o "Exp.", 2) "OFICIO N" / "OFICIO No.", 3) "COMUNICADO No.". IMPORTANTE: extraer SOLO el número inmediato después de la etiqueta, SIN incluir el año ni texto adicional. Ejemplos: "OFICIO N 00906 de 2025" → numeroOficio = "00906" (NO "009062025"); "EXPEDIENTE 4686-2022" → numeroOficio = "46862022" (guiones se eliminan); "COMUNICADO No. 12345" → numeroOficio = "12345". SOLO si el documento no trae ninguna de esas tres etiquetas, se admite como reemplazo el número de "RESOLUCIÓN", "ACTO ADMINISTRATIVO", "RADICADO" o "PROCESO". Si tampoco hay ninguno de esos, usar "0". CRÍTICO: este reemplazo por resolución/radicado es EXCLUSIVO de nombreOficioFinal — NO se aplica a demandados[].oficioEmbargoADesembargar, que solo admite números de OFICIO reales. Máximo 23 dígitos, solo números. Extraer la fecha del oficio o documento y formatearla como DDMMAA (6 dígitos). Los últimos 8 caracteres (4 dígitos día-mes + 4 dígitos consecutivo) se completan en post-procesamiento. Ejemplo: "00906 DEL 290925 00000000". Si no se encuentra fecha, usar "000000".
     - CUENTA DEPOSITO JUDICIAL (oficio.cuentaDepositoJudicial): Extraer la cuenta de depósito judicial (suele estar asociada a la frase "depósito judicial"). Numérica, máximo 12 caracteres. Si no se encuentra, usar "0".
     - NOMBRE BANCO DEPOSITO JUDICIAL (oficio.nombreBancoDepositoJudicial): Extraer el nombre de la entidad bancaria asignada para los depósitos judiciales si se menciona (ej. "BANCO AGRARIO..."). Alfanumérico, máximo 40 caracteres, siempre en MAYÚSCULAS. Si no se encuentra, usar "0".
     - OBSERVACIONES (oficio.observaciones): Si dentro del oficio se encuentra una o más de estas palabras clave exactas: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado o certificación; captúralas usando EXACTAMENTE la misma palabra de esta lista y concaténalas separadas por comas (ej. "Nomina, Pagador, Información"). Si no se encuentra ninguna, usar "0".
 
     demandados:
     - NÚMERO DE RADICADO (demandados[].numeroRadicado): Información que trae el documento, la cual puede encontrarse también con los títulos Resolución, Expediente, Radicado, Proceso o Número de Proceso. Dato numérico, máximo 23 caracteres, sin puntos ni comas. Ejemplo: "68001400300520240075800". Si el texto cita más de un número bajo estos títulos (ej. una resolución anterior y luego la actual), usa SIEMPRE la actual/vigente. En DESEMBARGO específicamente, si el documento cita la resolución que ordenó el embargo original y la resolución que ordena el desembargo, usa SIEMPRE la del desembargo — la del embargo original va en radicadoADesembargar, no acá. Si no se encuentra, usar "0".
-    - VALOR EMBARGO (demandados[].valorEmbargo): Transcribir LITERALMENTE el valor tal como aparece escrito en el documento para ESTE demandado, incluyendo puntos, comas y el símbolo $ si lo tiene (ej. "$16.000.000.00" o "16.000.000,00"). NO limpies separadores, NO conviertas a número, NO redondees — el sistema hace esa conversión en post-procesamiento. Si no se encuentra, usar "0".
-    - RADICADO A DESEMBARGAR (demandados[].radicadoADesembargar): Solo en DESEMBARGO. Número de la resolución o acto administrativo que ORDENÓ EL EMBARGO original que ahora se levanta para ESTE demandado. A diferencia de oficioEmbargoADesembargar (que va a nivel de oficio, uno solo), este campo se extrae POR DEMANDADO: si el oficio levanta un único embargo, usa el MISMO número (el mismo que oficioEmbargoADesembargar) para todos los demandados; si el documento lista radicados de embargo original DISTINTOS por demandado, asigna a cada uno el que le corresponda. Extraer SOLAMENTE los dígitos. Máximo 23 caracteres numéricos. Si no aplica (no es DESEMBARGO) o no se encuentra, usar "0".
+    - OFICIO A DESEMBARGAR (demandados[].oficioEmbargoADesembargar): Solo en DESEMBARGO. Número del OFICIO original que ordenó el embargo y que ahora se deja sin efecto para ESTE demandado. Se extrae POR DEMANDADO: si el oficio levanta un único embargo, usa el MISMO número para todos; si el documento lista oficios DISTINTOS por demandado, asigna a cada uno el suyo. REGLA ESTRICTA DE ETIQUETA: solo se acepta el número que venga bajo una etiqueta explícita de "OFICIO" o "COMUNICADO". Si el documento solo cita una RESOLUCIÓN, ACTO ADMINISTRATIVO, EXPEDIENTE, RADICADO o PROCESO, este campo queda en "0" y ese número va en radicadoADesembargar — acá NUNCA se sustituye el número de oficio por uno de resolución. Extraer SOLAMENTE los dígitos, sin fechas ni texto ni palabras como "OFICIO" o "DEL". Ejemplo: "dejar sin efecto el oficio 1128 del 26 de febrero de 2025" → "1128". Máximo 23 caracteres numéricos. Si no aplica (no es DESEMBARGO) o no hay etiqueta de oficio, usar "0" — el post-procesamiento se encarga de completar ese "0" con la fecha del oficio cuando corresponda, vos no necesitas resolver esa parte.
+    - VALOR EMBARGO (demandados[].valorEmbargo): Transcribir LITERALMENTE el valor tal como aparece escrito en el documento para ESTA APARICIÓN del demandado, incluyendo puntos, comas y el símbolo $ si lo tiene (ej. "$16.000.000.00" o "16.000.000,00"). NO limpies separadores, NO conviertas a número, NO redondees — el sistema hace esa conversión en post-procesamiento. Si no se encuentra, usar "0". CRÍTICO: cada objeto de "demandados" lleva UNA sola cuantía. Si el documento asigna varias cuantías a la misma persona, NO las sumes ni elijas una: genera un objeto por cada cuantía (ver BLOQUE 2).
+    - RADICADO A DESEMBARGAR (demandados[].radicadoADesembargar): Solo en DESEMBARGO. Número de la RESOLUCIÓN o acto administrativo que ORDENÓ EL EMBARGO original que ahora se levanta para ESTE demandado. Es el campo complementario de oficioEmbargoADesembargar: aquel solo admite números bajo etiqueta de OFICIO/COMUNICADO, este toma los de RESOLUCIÓN/ACTO ADMINISTRATIVO. Si el documento cita ambos, se llenan los dos; si cita solo uno, el otro queda en "0" — nunca se copia el mismo número al campo que no corresponde por etiqueta. También se extrae POR DEMANDADO: si el oficio levanta un único embargo, usa el MISMO número para todos; si el documento lista radicados DISTINTOS por demandado, asigna a cada uno el suyo. Extraer SOLAMENTE los dígitos. Máximo 23 caracteres numéricos. Si no aplica (no es DESEMBARGO) o no se encuentra, usar "0".
     - PRODUCTOS A EMBARGAR (demandados[].cuentas[].productosAEmbargar): Información que trae el documento indicando sobre cuáles productos recae la medida de embargo. Si la medida recae sobre CUENTAS DE AHORROS, CORRIENTES Y CDT'S (más de un tipo de cuenta), indicar "TODOS". Si recae solo sobre CUENTAS DE AHORRO, indicar "AHORROS". Si recae solo sobre CUENTAS CORRIENTES, indicar "CORRIENTES". Si recae solo sobre CDT'S, indicar "CDT'S".
     - CUENTAS ESPECÍFICAS (demandados[].cuentas[].numeroCuenta): Limpiar guiones o espacios. Máximo 12 caracteres numéricos. Si no se encuentra, usar "0".
 
     ente:
     - CORREOS ELECTRÓNICOS (ente.correosElectronicos): Extraer TODAS las direcciones válidas que contengan @ como ARRAY. Es OBLIGATORIO extraer el correo del remitente (ej. Juzgado o entidad que emite el oficio), que suele ubicarse en el encabezado o al final del documento. Si no hay, retornar [].
+      LIMPIEZA OBLIGATORIA DE CADA DIRECCIÓN: el elemento debe quedar EXACTAMENTE con el formato "usuario@dominio.tld" en MINÚSCULAS, sin ningún carácter extra alrededor ni dentro. Elimina: viñetas y guiones de lista ("•", "·", "-", "–", "—", "»"), el prefijo "mailto:", etiquetas como "Correo:", "Correo electrónico:", "E-mail:", "Notificaciones:", delimitadores ("<", ">", "(", ")", "[", "]"), comillas, espacios (incluidos los que el OCR mete en medio de la dirección) y los signos de puntuación que cierran la frase (".", ",", ";", ":"). Ejemplos: "• mailto:Juzgado01@Ramajudicial.gov.co," → "juzgado01@ramajudicial.gov.co"; "<j03pcm@cendoj.ramajudicial.gov.co>." → "j03pcm@cendoj.ramajudicial.gov.co".
+      UN ELEMENTO = UNA DIRECCIÓN: si el documento trae varias pegadas por comas, punto y coma o saltos de línea, sepáralas en elementos distintos del array. No repitas la misma dirección dos veces.
+      Si un fragmento no alcanza a formar una dirección completa y válida (le falta el "@", el dominio o la extensión), OMÍTELO del array — es preferible un array más corto que un elemento con basura.
     - LINK COLOCACION RESPUESTA (ente.linkColocacionRespuesta): SIEMPRE debe quedar en "0". NUNCA llenarlo con el link de verificación del documento (ej. URL de firmaelectronica.ramajudicial.gov.co) ni con ninguna otra URL, dirección física o texto. Valor fijo obligatorio: "0".
 
     --- BLOQUE 5: LIMPIEZA DE FORMATO TRANSVERSAL ---
-    - NÚMEROS DE IDENTIFICACIÓN: Remover formato. Extraer exclusivamente dígitos. Truncar si supera 12 caracteres.
-    - NOMBRES: Demandados máximo 50 caracteres, demandantes máximo 25 caracteres, entes máximo 40 caracteres.
+    - NÚMEROS DE IDENTIFICACIÓN (demandados[].numeroId, demandantes[].numeroId): Remover formato (puntos, comas, guiones). Extraer exclusivamente dígitos, tal como aparece en el documento, sin truncar salvo que supere 30 caracteres (límite real de la columna en BD).
+    - NOMBRES (demandados[].nombre, demandantes[].nombre, ente.nombreEnteEmbargante): transcribir TAL COMO aparecen en el documento, SIN truncar ni abreviar. Estos nombres se cruzan contra la base de datos del cliente, así que un nombre incompleto rompe ese cruce — prioriza la fidelidad al texto original sobre cualquier idea de "acortar".
     - PORCENTAJE (demandados[].porcentajeAEmbargar): Solo el número, sin signo %, sin puntos ni comas. Si no hay, usar "0".
+    - TIPO DE APLICACIÓN (infoCliente.tipoAplicacion): el valor por defecto "CONGELAR" aplica a EMBARGO y ALCANCE por igual. En DESEMBARGO no hay default: usar "0" siempre.
 
     --- ESTRUCTURA DE TEXTO A PROCESAR (DESDE OCR) ---
     {{text}}

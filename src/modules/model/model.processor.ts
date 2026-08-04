@@ -17,6 +17,12 @@ import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { DocumentAiStrategy } from '../ocr/strategies/document-ai.strategy';
 import { parseValorEmbargo } from '@/common/utils/valor-embargo.util';
 import {
+  esDesembargo,
+  normalizarTipoAplicacion,
+  SIN_DATO,
+} from '@/common/utils/tipo-oficio.util';
+import { normalizarCorreos } from '@/common/utils/correo.util';
+import {
   carpetaFechaBogota,
   resolverRutaSinColision,
 } from '@/common/utils/file-destination.util';
@@ -188,26 +194,31 @@ export class ModelProcessor extends WorkerHost {
   }
 
   /**
-   * Normaliza un campo de nombre a mayúsculas y lo recorta a `maxLength`.
-   * No toca el valor si ya es "0" (fallback). Loguea si hubo que
-   * mayuscular o recortar, para trazabilidad.
+   * Normaliza un campo de nombre a mayúsculas y, si se indica `maxLength`, lo
+   * recorta a ese tope. No toca el valor si ya es "0" (fallback). Loguea si
+   * hubo que mayuscular o recortar, para trazabilidad.
+   *
+   * `maxLength` es opcional: nombres que se cruzan contra la BD del cliente
+   * (demandante, ente embargante) NO deben truncarse — un nombre incompleto
+   * rompe ese cruce — así que esos llamados se hacen sin `maxLength`.
    */
   private normalizeNameField(
     fieldLabel: string,
     value: unknown,
-    maxLength: number,
+    maxLength?: number,
   ): unknown {
     if (typeof value !== 'string' || value === '0') {
       return value;
     }
     const mayusculas = value.toUpperCase();
-    const normalizado = mayusculas.slice(0, maxLength);
+    const normalizado =
+      maxLength !== undefined ? mayusculas.slice(0, maxLength) : mayusculas;
     if (normalizado !== value) {
       const cambios: string[] = [];
       if (mayusculas !== value) {
         cambios.push('se convirtió a mayúsculas');
       }
-      if (mayusculas.length > maxLength) {
+      if (maxLength !== undefined && mayusculas.length > maxLength) {
         cambios.push(`se recortó a ${maxLength} caracteres`);
       }
       this.logger.debug(
@@ -327,8 +338,13 @@ export class ModelProcessor extends WorkerHost {
       // El prompt ya lo pide en cada caso, pero el modelo no siempre lo
       // respeta. Solo aplica al flujo individual — el flujo masivo (Excel)
       // se llena manual, no se toca. PENDIENTES a propósito (no se tocan
-      // todavía): nombreBancoDepositoJudicial, demandados[].nombre,
-      // oficioEmbargoADesembargar.
+      // todavía): nombreBancoDepositoJudicial, demandados[].nombre.
+      // nombreOficioInicial, ente.nombreEnteEmbargante,
+      // ente.nombreSecretarioFuncionario, demandados[].numeroId,
+      // demandantes[].numeroId y demandantes[].nombre se cruzan contra la BD
+      // del cliente: NUNCA se truncan (o solo hasta el tope real de la
+      // columna en BD para numeroId, ver más abajo), solo se uppercasea donde
+      // ya se hacía.
       oficio.cuentaDepositoJudicial = this.normalizeNumericField(
         'cuentaDepositoJudicial',
         oficio.cuentaDepositoJudicial,
@@ -342,13 +358,25 @@ export class ModelProcessor extends WorkerHost {
       ente.nombreEnteEmbargante = this.normalizeNameField(
         'nombreEnteEmbargante',
         ente.nombreEnteEmbargante,
-        40,
       );
       ente.nombreSecretarioFuncionario = this.normalizeNameField(
         'nombreSecretarioFuncionario',
         ente.nombreSecretarioFuncionario,
-        25,
       );
+
+      // Los correos llegan con basura pegada del OCR (viñetas, "mailto:",
+      // "<...>", puntuación final, saltos de línea). Se extrae de cada elemento
+      // solo lo que tenga forma de correo y se descarta el resto.
+      const correosOriginales = ente.correosElectronicos;
+      ente.correosElectronicos = normalizarCorreos(correosOriginales);
+      if (
+        JSON.stringify(correosOriginales) !==
+        JSON.stringify(ente.correosElectronicos)
+      ) {
+        this.logger.debug(
+          `correosElectronicos normalizados: ${JSON.stringify(correosOriginales)} -> ${JSON.stringify(ente.correosElectronicos)}`,
+        );
+      }
 
       if (
         !resultJson.infoCliente ||
@@ -368,6 +396,53 @@ export class ModelProcessor extends WorkerHost {
       infoClienteTemprano.codigoAplicacion = '0';
       infoClienteTemprano.codigoAlcance = '0';
 
+      // El default "CONGELAR" aplica a EMBARGO y ALCANCE: se respeta un
+      // CONGELAR/DEBITAR que el modelo haya encontrado explícito en el
+      // documento, y cualquier otro caso queda en "CONGELAR" (EMBARGO/ALCANCE)
+      // o "0" (DESEMBARGO).
+      infoClienteTemprano.tipoAplicacion = normalizarTipoAplicacion(
+        oficio.tipoOficio,
+        infoClienteTemprano.tipoAplicacion,
+      );
+
+      // Los dos campos de desembargo aplican EXCLUSIVAMENTE a DESEMBARGO. Se
+      // fuerzan a "0" en EMBARGO/ALCANCE por si el modelo capturó un oficio o
+      // resolución previa que el documento solo mencionaba de paso.
+      const oficioEsDesembargo = esDesembargo(oficio.tipoOficio);
+
+      // Fecha del oficio (DDMMAA) y fecha de procesamiento, calculadas temprano
+      // porque sirven de fallback en DOS lugares: acá abajo para
+      // demandados[].oficioEmbargoADesembargar, y más adelante para construir
+      // oficio.nombreOficioFinal. Se leen del campo crudo que devolvió Gemini
+      // en oficio.nombreOficioFinal ("{numeroOficio} DEL {fecha} ..."), ANTES
+      // de que ese campo se sobreescriba con el valor final construido.
+      const rawOficioFinal =
+        typeof oficio.nombreOficioFinal === 'string'
+          ? oficio.nombreOficioFinal
+          : '';
+      const rawTokens = rawOficioFinal.trim().split(/\s+/);
+      const modeloFechaOficio =
+        rawTokens.length >= 3 && rawTokens[1] === 'DEL' ? rawTokens[2] : '';
+
+      // fechaOficio válida: EXACTAMENTE 6 dígitos (DDMMAA) y NO todo ceros.
+      const fechaOficioDigitos = modeloFechaOficio.replace(/\D+/g, '');
+      const fechaOficioValida =
+        /^\d{6}$/.test(fechaOficioDigitos) && !/^0+$/.test(fechaOficioDigitos);
+
+      // Fecha ACTUAL en DDMMAA (día-mes-año, hora Bogotá vía nowBogotaDate).
+      // OJO: orden DÍA-MES, distinto del MMDD (mes-día) del consecutivo — no
+      // confundir los dos formatos.
+      const hoyBogota = nowBogotaDate();
+      const fechaActualDDMMAA =
+        String(hoyBogota.getUTCDate()).padStart(2, '0') +
+        String(hoyBogota.getUTCMonth() + 1).padStart(2, '0') +
+        String(hoyBogota.getUTCFullYear() % 100).padStart(2, '0');
+
+      // Segmento fecha: la del oficio si es válida; si no, la actual.
+      const segmentoFecha = fechaOficioValida
+        ? fechaOficioDigitos
+        : fechaActualDDMMAA;
+
       if (Array.isArray(resultJson.demandados)) {
         for (const demandado of resultJson.demandados as Record<
           string,
@@ -378,21 +453,49 @@ export class ModelProcessor extends WorkerHost {
             'demandados[].tipoId',
             demandado.tipoId,
           );
+          // Tope 30 (antes 12): es la llave de cruce contra la BD del cliente
+          // (ver identifierKey del perfil), y el número de identificación
+          // real puede superar 12 dígitos. 30 es el tope real de la columna
+          // en BD, no un valor arbitrario.
           demandado.numeroId = this.normalizeNumericField(
             'demandados[].numeroId',
             demandado.numeroId,
-            12,
+            30,
           );
           demandado.numeroRadicado = this.normalizeNumericField(
             'demandados[].numeroRadicado',
             demandado.numeroRadicado,
             23,
           );
-          demandado.radicadoADesembargar = this.normalizeNumericField(
-            'demandados[].radicadoADesembargar',
-            demandado.radicadoADesembargar,
-            23,
-          );
+          if (!oficioEsDesembargo) {
+            demandado.oficioEmbargoADesembargar = SIN_DATO;
+          } else {
+            const oficioADesembargarNormalizado = this.normalizeNumericField(
+              'demandados[].oficioEmbargoADesembargar',
+              demandado.oficioEmbargoADesembargar,
+              23,
+            );
+            // Sin número de oficio bajo etiqueta explícita (OFICIO/COMUNICADO):
+            // en vez de dejar "0", se completa con la fecha del oficio (o la de
+            // procesamiento si el documento tampoco trae fecha) — mismo
+            // segmentoFecha que usa nombreOficioFinal más abajo.
+            if (oficioADesembargarNormalizado === SIN_DATO) {
+              this.logger.debug(
+                `demandados[].oficioEmbargoADesembargar sin número explícito, se usa fecha como fallback: "0" -> "${segmentoFecha}"`,
+              );
+            }
+            demandado.oficioEmbargoADesembargar =
+              oficioADesembargarNormalizado === SIN_DATO
+                ? segmentoFecha
+                : oficioADesembargarNormalizado;
+          }
+          demandado.radicadoADesembargar = oficioEsDesembargo
+            ? this.normalizeNumericField(
+                'demandados[].radicadoADesembargar',
+                demandado.radicadoADesembargar,
+                23,
+              )
+            : SIN_DATO;
           // El modelo transcribe valorEmbargo LITERAL (string, con puntos/comas/$
           // tal como aparece en el documento) — acá se convierte a entero COP.
           demandado.valorEmbargo = parseValorEmbargo(demandado.valorEmbargo);
@@ -422,36 +525,32 @@ export class ModelProcessor extends WorkerHost {
             'demandantes[].tipoId',
             demandante.tipoId,
           );
+          // Tope 30 (antes 12): mismo motivo que demandados[].numeroId — tope
+          // real de la columna en BD, no un valor arbitrario.
           demandante.numeroId = this.normalizeNumericField(
             'demandantes[].numeroId',
             demandante.numeroId,
-            12,
+            30,
           );
           demandante.nombre = this.normalizeNameField(
             'demandantes[].nombre',
             demandante.nombre,
-            25,
           );
         }
       }
 
       // Inyectar nombreOficioInicial desde el nombre del archivo original
-      // (trazabilidad). Cinturón y tirantes: mayúsculas + tope de 40
-      // caracteres.
+      // (trazabilidad). Cinturón y tirantes: solo mayúsculas — SIN tope de
+      // longitud, se cruza contra la BD del cliente y truncarlo desalinea
+      // ese cruce (la columna en BD es varchar(500), amplio margen).
       const nombreOficioInicialRaw = path.basename(
         filePath,
         path.extname(filePath),
       );
-      const nombreOficioInicial = nombreOficioInicialRaw
-        .toUpperCase()
-        .slice(0, 40);
+      const nombreOficioInicial = nombreOficioInicialRaw.toUpperCase();
       if (nombreOficioInicial !== nombreOficioInicialRaw) {
         this.logger.debug(
-          `nombreOficioInicial normalizado (mayúsculas` +
-            (nombreOficioInicialRaw.length > 40
-              ? ' + recorte a 40 caracteres'
-              : '') +
-            `): "${nombreOficioInicialRaw}" -> "${nombreOficioInicial}"`,
+          `nombreOficioInicial normalizado (mayúsculas): "${nombreOficioInicialRaw}" -> "${nombreOficioInicial}"`,
         );
       }
       oficio.nombreOficioInicial = nombreOficioInicial;
@@ -461,42 +560,18 @@ export class ModelProcessor extends WorkerHost {
       // El código ARMA el nombre desde los datos en vez de depender de que
       // Gemini entregue el esqueleto correcto (antes solo rellenaba un
       // placeholder, y colapsaba a "0" pelado o a "000 DEL 000000 ..." si el
-      // modelo devolvía ceros). Del output del modelo solo se rescatan dos
-      // datos: el numeroOficio (1er token) y la fechaOficioDDMMAA (3er token,
-      // si vino con la estructura "{n} DEL {fecha} ..."). Todo lo demás se
-      // reconstruye.
-      const rawOficioFinal =
-        typeof oficio.nombreOficioFinal === 'string'
-          ? oficio.nombreOficioFinal
-          : '';
-      const rawTokens = rawOficioFinal.trim().split(/\s+/);
+      // modelo devolvía ceros). Del output del modelo solo se rescata el
+      // numeroOficio (1er token de oficio.nombreOficioFinal) — la fechaOficio
+      // (3er token) y sus derivados (fechaOficioValida, segmentoFecha,
+      // fechaActualDDMMAA) ya se calcularon más arriba, antes del loop de
+      // demandados, porque también los usa el fallback de
+      // demandados[].oficioEmbargoADesembargar. Todo lo demás se reconstruye.
       const modeloNumeroOficio = rawTokens[0] ?? '';
-      const modeloFechaOficio =
-        rawTokens.length >= 3 && rawTokens[1] === 'DEL' ? rawTokens[2] : '';
 
       // numeroOficio válido: normalizar a SOLO dígitos y que NO sea todo ceros.
       const numeroOficioDigitos = modeloNumeroOficio.replace(/\D+/g, '');
       const numeroOficioValido =
         numeroOficioDigitos.length > 0 && !/^0+$/.test(numeroOficioDigitos);
-
-      // fechaOficio válida: EXACTAMENTE 6 dígitos (DDMMAA) y NO todo ceros.
-      const fechaOficioDigitos = modeloFechaOficio.replace(/\D+/g, '');
-      const fechaOficioValida =
-        /^\d{6}$/.test(fechaOficioDigitos) && !/^0+$/.test(fechaOficioDigitos);
-
-      // Fecha ACTUAL en DDMMAA (día-mes-año, hora Bogotá vía nowBogotaDate).
-      // OJO: orden DÍA-MES, distinto del MMDD (mes-día) del consecutivo — no
-      // confundir los dos formatos.
-      const hoyBogota = nowBogotaDate();
-      const fechaActualDDMMAA =
-        String(hoyBogota.getUTCDate()).padStart(2, '0') +
-        String(hoyBogota.getUTCMonth() + 1).padStart(2, '0') +
-        String(hoyBogota.getUTCFullYear() % 100).padStart(2, '0');
-
-      // Segmento fecha (3ro): la del oficio si es válida; si no, la actual.
-      const segmentoFecha = fechaOficioValida
-        ? fechaOficioDigitos
-        : fechaActualDDMMAA;
 
       // Segmento numeroOficio (1ro): el número si es válido; si no, la fecha
       // del oficio si es válida; si no hay ninguno, la fecha actual.

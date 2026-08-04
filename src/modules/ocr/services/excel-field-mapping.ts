@@ -3,6 +3,8 @@
  * hacia las rutas del JSON final anidado (mismo formato que el perfil davibank).
  */
 import { parseValorEmbargo } from '@/common/utils/valor-embargo.util';
+import { normalizarTipoAplicacion } from '@/common/utils/tipo-oficio.util';
+import { normalizarCorreos } from '@/common/utils/correo.util';
 
 export type FieldType = 'string' | 'number' | 'array';
 
@@ -94,13 +96,14 @@ export const EXCEL_FIELD_MAP: Record<string, FieldMapping> = {
     type: 'string',
   },
   OBSERVACIONES: { path: 'oficio.observaciones', type: 'string' },
+  // Cada fila del Excel es un demandado (ver mapRowToPayload), así que tanto el
+  // oficio como el radicado a desembargar de cada fila se asignan a SU
+  // demandado — no al oficio compartido — para que cada uno conserve el suyo
+  // si difieren.
   'OFICIO DE EMBARGO A DESEMBARGAR': {
-    path: 'oficio.oficioEmbargoADesembargar',
+    path: 'demandados[0].oficioEmbargoADesembargar',
     type: 'string',
   },
-  // Cada fila del Excel es un demandado (ver mapRowToPayload), así que el
-  // radicado a desembargar de cada fila se asigna a SU demandado — no al
-  // oficio compartido — para que cada uno conserve el suyo si difieren.
   'RADICADO OFICIO DE EMBARGO A DESEMBARGAR': {
     path: 'demandados[0].radicadoADesembargar',
     type: 'string',
@@ -202,7 +205,6 @@ export function buildDefaultPayload(): Record<string, any> {
       tipoOficio: '0',
       nombreOficioInicial: '0',
       nombreOficioFinal: '0',
-      oficioEmbargoADesembargar: '0',
       fechaHoraProcesamientoOficio: '0',
       observaciones: '0',
       tipoRequerimiento: '0',
@@ -227,6 +229,7 @@ export function buildDefaultPayload(): Record<string, any> {
         productosFuturo: '0',
         porcentajeAEmbargar: '0',
         valorEmbargo: 0,
+        oficioEmbargoADesembargar: '0',
         radicadoADesembargar: '0',
       },
     ],
@@ -250,7 +253,9 @@ export function buildDefaultPayload(): Record<string, any> {
       tipoDocumentoRecibidoEmail: [],
       codigoAlcance: '0',
       codigoAplicacion: '0',
-      tipoAplicacion: 'CONGELAR',
+      // Sin default: `mapRowToPayload` resuelve el valor final según el tipo de
+      // oficio (CONGELAR solo aplica a EMBARGO — ver normalizarTipoAplicacion).
+      tipoAplicacion: '0',
       tipoRespuesta: '0',
       vinculoCliente: '0',
     },
@@ -342,7 +347,15 @@ export function mapRowToPayload(
           .map((v) => v.trim())
           .filter((v) => v.length > 0);
         if (arr.length === 0) return;
-        setByPath(payload, mapping.path, arr);
+        // La celda de correos suele venir pegada de un PDF o de otro Excel y
+        // arrastra la misma basura que el flujo IA (viñetas, "mailto:",
+        // puntuación final): se sanea con el mismo criterio.
+        const valorFinal =
+          mapping.path === 'ente.correosElectronicos'
+            ? normalizarCorreos(arr)
+            : arr;
+        if (valorFinal.length === 0) return;
+        setByPath(payload, mapping.path, valorFinal);
         break;
       }
       default: {
@@ -355,6 +368,18 @@ export function mapRowToPayload(
   });
 
   setByPath(payload, 'oficio.tipoOficio', tipoOficio);
+
+  // El default "CONGELAR" solo aplica a EMBARGO. En ALCANCE la plantilla sí
+  // trae la columna "TIPO DE APLICACIÓN" (en DESEMBARGO no existe), así que un
+  // valor explícito de esa columna se respeta y lo único que se elimina es el
+  // relleno automático. Se resuelve DESPUÉS del mapeo de columnas para tener ya
+  // el valor de la fila cargado.
+  setByPath(
+    payload,
+    'infoCliente.tipoAplicacion',
+    normalizarTipoAplicacion(tipoOficio, payload.infoCliente?.tipoAplicacion),
+  );
+
   setByPath(payload, 'oficio.fechaHoraProcesamientoOficio', fechaProcesamiento);
   setByPath(
     payload,

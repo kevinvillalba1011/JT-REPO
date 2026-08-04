@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { normalizarTipoAplicacion } from '@/common/utils/tipo-oficio.util';
 
 @Injectable()
 export class IntegrationService {
@@ -160,10 +161,14 @@ export class IntegrationService {
 
   /**
    * Normalizes null values in the payload to appropriate defaults.
-   * - tipoAplicacion: null → "CONGELAR"
-   * - Other string fields with null → "0"
-   * - Other number fields with null → 0
+   * - String fields with null → "0"
+   * - Number fields with null → 0
    * - Arrays with null elements → filtered out
+   *
+   * `infoCliente.tipoAplicacion` NO se resuelve acá: depende de
+   * `oficio.tipoOficio` (el default "CONGELAR" solo aplica a EMBARGO), que no
+   * es visible desde esta recursión. Se ajusta en `sendData` sobre el objeto
+   * raíz — ver `normalizarTipoAplicacion`.
    */
   private normalizePayload(obj: any): any {
     if (obj === null || obj === undefined) {
@@ -182,11 +187,7 @@ export class IntegrationService {
 
     for (const [key, value] of Object.entries(obj)) {
       if (value === null || value === undefined) {
-        if (key === 'tipoAplicacion') {
-          normalized[key] = 'CONGELAR';
-        } else {
-          normalized[key] = '0';
-        }
+        normalized[key] = '0';
       } else if (Array.isArray(value)) {
         normalized[key] = value
           .map((item) => this.normalizePayload(item))
@@ -227,6 +228,16 @@ export class IntegrationService {
       const token = await this.getToken();
 
       const normalizedJson = this.normalizePayload(finalJson);
+
+      // Último punto de control antes de salir al sistema externo: el default
+      // "CONGELAR" solo aplica a EMBARGO. En DESEMBARGO/ALCANCE se respeta un
+      // CONGELAR/DEBITAR explícito y cualquier otra cosa queda en "0".
+      if (normalizedJson?.infoCliente) {
+        normalizedJson.infoCliente.tipoAplicacion = normalizarTipoAplicacion(
+          normalizedJson?.oficio?.tipoOficio,
+          normalizedJson.infoCliente.tipoAplicacion,
+        );
+      }
 
       const response = await fetch(dataUrl, {
         method: 'POST',
