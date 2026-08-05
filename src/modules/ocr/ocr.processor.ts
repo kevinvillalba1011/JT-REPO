@@ -14,6 +14,7 @@ import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
 import { IntegrationService } from '../integration/integration.service';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { buildDeterministicJobId } from '@/common/utils/job-id.util';
+import { moverArchivoAFechaDestino } from '@/common/utils/file-destination.util';
 
 @Processor('cola_ocr', {
   concurrency: 5,
@@ -117,21 +118,7 @@ export class OcrProcessor extends WorkerHost {
           './local/unsupported',
         );
 
-        try {
-          await fs.promises.access(unsupportedPath);
-        } catch {
-          await fs.promises.mkdir(unsupportedPath, { recursive: true });
-        }
-
-        const baseName = path.basename(filePath);
-        const destination = path.join(unsupportedPath, baseName);
-
-        try {
-          await fs.promises.rename(filePath, destination);
-        } catch (err) {
-          await fs.promises.copyFile(filePath, destination);
-          await fs.promises.unlink(filePath);
-        }
+        await moverArchivoAFechaDestino(unsupportedPath, filePath);
 
         await this.documentRepository.updateState(
           documentId,
@@ -275,7 +262,9 @@ export class OcrProcessor extends WorkerHost {
    * Mueve un archivo a la carpeta de revisión (OCR_UNREADABLE_PATH) cuando
    * un documento queda en estado de error terminal (permanente o tras
    * agotar reintentos), para que no quede huérfano dentro del contenedor.
-   * Retorna la ruta destino si se movió, o `null` si no había nada que mover.
+   * Destino organizado por subcarpeta de fecha (yyyyMMdd, hora Bogotá),
+   * igual que OCR_DESTINATION_PATH. Retorna la ruta destino si se movió, o
+   * `null` si no había nada que mover.
    */
   private async moveToReviewFolder(filePath?: string): Promise<string | null> {
     if (!filePath || !fs.existsSync(filePath)) {
@@ -283,27 +272,12 @@ export class OcrProcessor extends WorkerHost {
     }
 
     try {
-      await fs.promises.access(this.unreadablePath);
-    } catch {
-      await fs.promises.mkdir(this.unreadablePath, { recursive: true });
-    }
-
-    const destination = path.join(this.unreadablePath, path.basename(filePath));
-
-    try {
-      await fs.promises.rename(filePath, destination);
-      return destination;
-    } catch {
-      try {
-        await fs.promises.copyFile(filePath, destination);
-        await fs.promises.unlink(filePath);
-        return destination;
-      } catch (moveErr: any) {
-        this.logger.error(
-          `No se pudo mover ${filePath} a la carpeta de revisión: ${moveErr.message}`,
-        );
-        return null;
-      }
+      return await moverArchivoAFechaDestino(this.unreadablePath, filePath);
+    } catch (moveErr: any) {
+      this.logger.error(
+        `No se pudo mover ${filePath} a la carpeta de revisión: ${moveErr.message}`,
+      );
+      return null;
     }
   }
 }

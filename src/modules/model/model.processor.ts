@@ -25,6 +25,7 @@ import { normalizarCorreos } from '@/common/utils/correo.util';
 import {
   carpetaFechaBogota,
   resolverRutaSinColision,
+  moverArchivoAFechaDestino,
 } from '@/common/utils/file-destination.util';
 
 /** Variantes largas de tipoId aceptadas en el documento, mapeadas a la letra corta del enum. */
@@ -810,7 +811,8 @@ export class ModelProcessor extends WorkerHost {
    * Mueve un archivo a la carpeta de revisión (OCR_UNREADABLE_PATH) cuando
    * un documento queda en estado de error terminal en la etapa de IA
    * (permanente o tras agotar reintentos), para que no quede huérfano en
-   * OCR_PATH dentro del contenedor.
+   * OCR_PATH dentro del contenedor. Destino organizado por subcarpeta de
+   * fecha (yyyyMMdd, hora Bogotá), igual que OCR_DESTINATION_PATH.
    */
   private async moveToReviewFolder(filePath?: string): Promise<string | null> {
     if (!filePath || !fs.existsSync(filePath)) {
@@ -818,27 +820,12 @@ export class ModelProcessor extends WorkerHost {
     }
 
     try {
-      await fs.promises.access(this.unreadablePath);
-    } catch {
-      await fs.promises.mkdir(this.unreadablePath, { recursive: true });
-    }
-
-    const destination = path.join(this.unreadablePath, path.basename(filePath));
-
-    try {
-      await fs.promises.rename(filePath, destination);
-      return destination;
-    } catch {
-      try {
-        await fs.promises.copyFile(filePath, destination);
-        await fs.promises.unlink(filePath);
-        return destination;
-      } catch (moveErr: any) {
-        this.logger.error(
-          `No se pudo mover ${filePath} a la carpeta de revisión: ${moveErr.message}`,
-        );
-        return null;
-      }
+      return await moverArchivoAFechaDestino(this.unreadablePath, filePath);
+    } catch (moveErr: any) {
+      this.logger.error(
+        `No se pudo mover ${filePath} a la carpeta de revisión: ${moveErr.message}`,
+      );
+      return null;
     }
   }
 }

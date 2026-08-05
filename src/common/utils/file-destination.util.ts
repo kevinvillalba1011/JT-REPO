@@ -46,3 +46,35 @@ async function existePath(filePath: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Mueve `filePath` a una subcarpeta con la fecha del día actual (yyyyMMdd,
+ * hora Bogotá) dentro de `baseDir`, igual que el destino de los documentos
+ * procesados exitosamente (ver `model.processor.ts`/`massive-excel.service.ts`).
+ * Evita colisiones de nombre vía `resolverRutaSinColision` y crea la
+ * subcarpeta si no existe. `fileName` permite pasar un nombre distinto al de
+ * `filePath` (ej. cuando el archivo original ya no existe en su ruta y se
+ * reconstruye desde el nombre guardado en DB). Retorna la ruta final.
+ */
+export async function moverArchivoAFechaDestino(
+  baseDir: string,
+  filePath: string,
+  fileName?: string,
+): Promise<string> {
+  const destDir = path.join(baseDir, carpetaFechaBogota());
+  await fs.promises.mkdir(destDir, { recursive: true });
+
+  const nombre = fileName ?? path.basename(filePath);
+  const ext = path.extname(nombre);
+  const baseName = path.basename(nombre, ext);
+  const destino = await resolverRutaSinColision(destDir, baseName, ext);
+
+  try {
+    await fs.promises.rename(filePath, destino);
+  } catch {
+    await fs.promises.copyFile(filePath, destino);
+    await fs.promises.unlink(filePath);
+  }
+
+  return destino;
+}

@@ -11,6 +11,7 @@ import { DocumentRepository } from '../documents/repositories/document.repositor
 import { DocumentState } from '@prisma/client';
 import { buildDeterministicJobId } from '@/common/utils/job-id.util';
 import { nowBogotaISOString } from '@/common/utils/date.util';
+import { moverArchivoAFechaDestino } from '@/common/utils/file-destination.util';
 
 /**
  * Extensiones que enrutan al flujo masivo (cola_masivos) en vez del flujo
@@ -119,7 +120,10 @@ export class ExtractionService implements OnApplicationBootstrap {
       const recovery = await this.resolveRecoveryAction(this.ocrQueue, jobId);
 
       if (recovery.exhausted) {
-        const movedTo = await this.moveToReviewFolder(filePath, doc.fileName);
+        const movedTo = await this.moveToReviewFolderDated(
+          filePath,
+          doc.fileName,
+        );
         await this.documentRepository.updateState(
           doc.id,
           DocumentState.ERROR_OCR,
@@ -183,7 +187,10 @@ export class ExtractionService implements OnApplicationBootstrap {
       const recovery = await this.resolveRecoveryAction(this.modelQueue, jobId);
 
       if (recovery.exhausted) {
-        const movedTo = await this.moveToReviewFolder(filePath, doc.fileName);
+        const movedTo = await this.moveToReviewFolderDated(
+          filePath,
+          doc.fileName,
+        );
         await this.documentRepository.updateState(
           doc.id,
           DocumentState.MODEL_ERROR,
@@ -306,10 +313,42 @@ export class ExtractionService implements OnApplicationBootstrap {
   }
 
   /**
+   * Igual que `moveToReviewFolder`, pero para los call sites del flujo
+   * individual (OCR/Model) en recuperación: organiza el destino en
+   * subcarpeta de fecha (yyyyMMdd, hora Bogotá), igual que
+   * `OcrProcessor`/`ModelProcessor` ya hacen para ese mismo escenario. El
+   * flujo masivo sigue usando `moveToReviewFolder` (plano) sin cambios.
+   */
+  private async moveToReviewFolderDated(
+    filePath: string,
+    fileName: string,
+  ): Promise<string | null> {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    try {
+      return await moverArchivoAFechaDestino(
+        this.unreadablePath,
+        filePath,
+        fileName,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `No se pudo mover ${filePath} a la carpeta de revisión: ${msg}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Mueve un archivo a la carpeta de revisión (OCR_UNREADABLE_PATH), igual
    * que `OcrProcessor`/`ModelProcessor`, para los casos en que la
    * recuperación detecta un job ya agotado y debe completar el cierre que el
-   * `onFailed` normal no llegó a hacer antes del crash. Retorna la ruta
+   * `onFailed` normal no llegó a hacer antes del crash. Usado únicamente por
+   * el flujo masivo (destino plano, sin subcarpeta de fecha — ver
+   * `moveToReviewFolderDated` para el flujo individual). Retorna la ruta
    * destino si se movió, o `null` si no había archivo que mover.
    */
   private async moveToReviewFolder(
@@ -592,7 +631,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             await fs.promises.unlink(filePath);
             this.logger.log(`Cleaned up old file: ${filePath}`);
           }
-        } catch (err) {
+        } catch (err: any) {
           this.logger.error(
             `Error cleaning up file ${filePath}: ${err.message}`,
           );
