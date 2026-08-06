@@ -59,3 +59,63 @@ export function normalizarTipoAplicacion(
 
   return explicito || 'CONGELAR';
 }
+
+export type DemandanteCoactivoPorDefectoResultado =
+  | {
+      accion: 'inyectar';
+      demandantes: Array<{ tipoId: string; numeroId: string; nombre: string }>;
+    }
+  | { accion: 'sin-ente'; motivo: string }
+  | { accion: 'sin-cambios' };
+
+/**
+ * Regla de negocio: en procesos COACTIVOS el ente que emite la medida
+ * cautelar ES el demandante. Si `demandantes` no trae ningún elemento con
+ * nombre válido, se deriva un demandante único a partir de
+ * `nombreEnteEmbargante`. De la entidad embargante solo se conoce el nombre
+ * — tipoId no es representable en el enum C/N/E/T/P del schema de Gemini —
+ * así que tipoId/numeroId quedan en SIN_DATO ("0").
+ *
+ * `accion: 'sin-cambios'` cuando no corresponde inyectar: el proceso no es
+ * COACTIVO, o ya hay un demandante válido (se respeta lo extraído por el
+ * modelo). `accion: 'sin-ente'` cuando SÍ correspondería inyectar pero no
+ * hay nombre de ente del cual derivarlo (caso a loguear como advertencia).
+ */
+export function demandanteCoactivoPorDefecto(
+  tipoProceso: unknown,
+  nombreEnteEmbargante: unknown,
+  demandantes: unknown,
+): DemandanteCoactivoPorDefectoResultado {
+  const esCoactivo =
+    typeof tipoProceso === 'string' &&
+    tipoProceso.trim().toUpperCase() === 'COACTIVO';
+  if (!esCoactivo) {
+    return { accion: 'sin-cambios' };
+  }
+
+  const hayDemandanteValido =
+    Array.isArray(demandantes) &&
+    demandantes.some((d) => {
+      if (!d || typeof d !== 'object') return false;
+      const nombre = (d as Record<string, unknown>).nombre;
+      return typeof nombre === 'string' && nombre !== '' && nombre !== SIN_DATO;
+    });
+  if (hayDemandanteValido) {
+    return { accion: 'sin-cambios' };
+  }
+
+  const nombreEnte =
+    typeof nombreEnteEmbargante === 'string' ? nombreEnteEmbargante : '';
+  if (nombreEnte.trim() === '' || nombreEnte === SIN_DATO) {
+    return {
+      accion: 'sin-ente',
+      motivo:
+        'demandantes[] vacío en proceso COACTIVO pero ente.nombreEnteEmbargante también está vacío: no se puede inyectar demandante.',
+    };
+  }
+
+  return {
+    accion: 'inyectar',
+    demandantes: [{ tipoId: SIN_DATO, numeroId: SIN_DATO, nombre: nombreEnte }],
+  };
+}

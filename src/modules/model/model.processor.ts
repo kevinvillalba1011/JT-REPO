@@ -19,6 +19,7 @@ import { parseValorEmbargo } from '@/common/utils/valor-embargo.util';
 import {
   esDesembargo,
   normalizarTipoAplicacion,
+  demandanteCoactivoPorDefecto,
   SIN_DATO,
 } from '@/common/utils/tipo-oficio.util';
 import { normalizarCorreos } from '@/common/utils/correo.util';
@@ -538,6 +539,23 @@ export class ModelProcessor extends WorkerHost {
             demandante.nombre,
           );
         }
+      }
+
+      // Regla de negocio: en procesos COACTIVOS el ente que emite la medida
+      // cautelar ES el demandante. Si el modelo sí extrajo algún demandante
+      // válido, se respeta tal cual; ver demandanteCoactivoPorDefecto().
+      const resultadoDemandantePorDefecto = demandanteCoactivoPorDefecto(
+        ente.tipoProceso,
+        ente.nombreEnteEmbargante,
+        resultJson.demandantes,
+      );
+      if (resultadoDemandantePorDefecto.accion === 'inyectar') {
+        this.logger.debug(
+          `demandantes[] vacío en proceso COACTIVO: se inyecta demandante derivado de ente.nombreEnteEmbargante ("${resultadoDemandantePorDefecto.demandantes[0].nombre}")`,
+        );
+        resultJson.demandantes = resultadoDemandantePorDefecto.demandantes;
+      } else if (resultadoDemandantePorDefecto.accion === 'sin-ente') {
+        this.logger.warn(resultadoDemandantePorDefecto.motivo);
       }
 
       // Inyectar nombreOficioInicial desde el nombre del archivo original

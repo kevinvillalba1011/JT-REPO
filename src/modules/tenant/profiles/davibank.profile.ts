@@ -358,6 +358,7 @@ export const DavibankProfile: TenantProfile = {
         Si no se especifican cuentas para un demandado, el array "cuentas" puede estar vacío [].
      3. "demandantes": ARRAY de objetos, UNO POR CADA demandante/accionante encontrado.
         Cada uno con: tipoId, numeroId, nombre.
+        CRÍTICO — Si el proceso es COACTIVO (ver "TIPO PROCESO" más abajo) y el documento NO menciona ningún demandante/accionante distinto, el demandante ES la propia entidad embargante: en ese caso incluye un objeto con nombre = nombreEnteEmbargante, y tipoId/numeroId con la identificación de esa entidad si el documento la trae (si no la trae, usa "0" en ambos).
      4. "ente": Información del ente embargante (nombreSecretarioFuncionario, nombreEnteEmbargante, ciudad, correosElectronicos como ARRAY, linkColocacionRespuesta, tipoProceso).
      5. "infoCliente": Información del cliente (fechaHoraRecepcionCorreo, tipoDocumentoRecibidoEmail como ARRAY, codigoAlcance, codigoAplicacion, tipoAplicacion, tipoRespuesta, vinculoCliente).
         tipoAplicacion va SIEMPRE en "infoCliente", NO en "demandados".
