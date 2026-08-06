@@ -12,6 +12,9 @@ import { DocumentState } from '@prisma/client';
 import { buildDeterministicJobId } from '@/common/utils/job-id.util';
 import { nowBogotaISOString } from '@/common/utils/date.util';
 import { moverArchivoAFechaDestino } from '@/common/utils/file-destination.util';
+import { MetadatosEntrada } from '@/common/utils/ruta-entrada.util';
+import { EntryReportRepository } from '../entry-report/repositories/entry-report.repository';
+import { EntryReportService } from '../entry-report/entry-report.service';
 
 /**
  * Extensiones que enrutan al flujo masivo (cola_masivos) en vez del flujo
@@ -34,6 +37,8 @@ export class ExtractionService implements OnApplicationBootstrap {
 
     private readonly localStrategy: LocalFileStrategy,
     private readonly documentRepository: DocumentRepository,
+    private readonly entryReportRepository: EntryReportRepository,
+    private readonly entryReportService: EntryReportService,
     @InjectQueue('cola_ocr') private readonly ocrQueue: Queue,
     @InjectQueue('cola_modelo') private readonly modelQueue: Queue,
     @InjectQueue('cola_masivos') private readonly masivosQueue: Queue,
@@ -136,6 +141,12 @@ export class ExtractionService implements OnApplicationBootstrap {
         this.logger.warn(
           `Document ${doc.id}: job ${jobId} ya agotó sus intentos en BullMQ antes del reinicio. Marcado ERROR_OCR sin reencolar.`,
         );
+        // Error definitivo (intentos ya agotados en BullMQ): cuenta para el
+        // cierre del lote de EntryReport.
+        await this.entryReportService.publicarEstadoTerminal(
+          doc.id,
+          DocumentState.ERROR_OCR,
+        );
         continue;
       }
 
@@ -208,6 +219,12 @@ export class ExtractionService implements OnApplicationBootstrap {
         this.logger.warn(
           `Document ${doc.id}: job ${jobId} ya agotó sus intentos en BullMQ antes del reinicio. Marcado MODEL_ERROR sin reencolar.`,
         );
+        // Error definitivo (intentos ya agotados en BullMQ): cuenta para el
+        // cierre del lote de EntryReport.
+        await this.entryReportService.publicarEstadoTerminal(
+          doc.id,
+          DocumentState.MODEL_ERROR,
+        );
         continue;
       }
 
@@ -279,6 +296,12 @@ export class ExtractionService implements OnApplicationBootstrap {
         );
         this.logger.warn(
           `Document ${doc.id}: job ${jobId} ya agotó sus intentos en BullMQ antes del reinicio. Marcado ERROR_OCR sin reencolar.`,
+        );
+        // Error definitivo (intentos ya agotados en BullMQ): cuenta para el
+        // cierre del lote de EntryReport.
+        await this.entryReportService.publicarEstadoTerminal(
+          doc.id,
+          DocumentState.ERROR_OCR,
         );
         continue;
       }
@@ -395,12 +418,23 @@ export class ExtractionService implements OnApplicationBootstrap {
     this.logger.debug('Starting scheduled extraction task...');
 
     const lockKey = 'extraction:lock';
-    // Adquirir lock distribuido con TTL de 120 segundos para evitar trabas permanentes
+    // TTL del lock configurable (default 600s / 10min): antes bastaba con
+    // 120s porque un tick solo escaneaba y movía un directorio plano. Ahora
+    // un tick puede recorrer VARIAS carpetas CORTE_[n] en secuencia (una por
+    // cada lote descubierto), cada una con su propio registro de
+    // EntryReport y su propio lote de archivos encolados, así que el tick
+    // completo puede tardar bastante más que antes. Un TTL corto liberaría
+    // el lock a mitad de un tick legítimo y dejaría correr dos ticks en
+    // paralelo sobre el mismo filesystem.
+    const lockTtlSeconds = this.configService.get<number>(
+      'EXTRACTION_LOCK_TTL_SECONDS',
+      600,
+    );
     const lockAcquired = await this.redisClient.set(
       lockKey,
       'locked',
       'EX',
-      120,
+      lockTtlSeconds,
       'NX',
     );
 
@@ -412,19 +446,89 @@ export class ExtractionService implements OnApplicationBootstrap {
     }
 
     try {
-      // 1. Extract Files (LocalFileStrategy moves files into IN_PATH)
-      const extractedFiles = await this.localStrategy.extractFiles(this.inPath);
+      // 1. Descubrir los grupos de entrada (carpetas CORTE_[n] o legacy) SIN
+      // moverlos todavía. `descubrirGrupos` ya los devuelve en el orden en
+      // que deben procesarse: legacy de raíz primero, luego por
+      // fechaEntrada ascendente y, dentro de cada fecha, por número de
+      // CORTE_[n] ascendente.
+      const grupos = await this.localStrategy.descubrirGrupos();
+      const nombresProcesadosEnEsteTick = new Set<string>();
 
-      // 3. Process Files in IN_PATH
-      const files = await fs.promises.readdir(this.inPath);
+      for (const grupo of grupos) {
+        try {
+          // 2. Registrar el lote ANTES de mover archivos: el requisito es
+          // que el conteo de entrada refleje "lo que había en la carpeta"
+          // en el momento del descubrimiento, no lo que sobrevive al mover
+          // (que podría fallar parcialmente por I/O). Si el proceso muere
+          // justo después de este paso pero antes de mover, el próximo tick
+          // vuelve a descubrir el mismo grupo (los archivos siguen en la
+          // carpeta fuente) y `upsertPorClave` suma sobre el mismo registro
+          // en vez de duplicarlo.
+          const entryReport = await this.entryReportRepository.upsertPorClave(
+            grupo.metadatos,
+            grupo.archivos.length,
+          );
 
-      for (const file of files) {
+          // 3. Mover los archivos del grupo a IN_PATH.
+          const archivos = await this.localStrategy.moverArchivos(
+            grupo,
+            this.inPath,
+          );
+
+          // `moverArchivos` loguea y continúa si un archivo concreto falla al
+          // moverse (I/O, archivo bloqueado por otro proceso), así que puede
+          // devolver menos archivos de los que se contaron en el paso 2. Ese
+          // archivo sigue en la carpeta fuente y el próximo tick lo va a
+          // descubrir y contar OTRA VEZ: sin este descuento el contador de
+          // entrada crecería en cada tick y `entrada = procesados + error`
+          // nunca se cumpliría, dejando el lote abierto para siempre.
+          const noMovidos = grupo.archivos.length - archivos.length;
+          if (noMovidos > 0) {
+            this.logger.warn(
+              `Grupo ${grupo.metadatos.tipoOficio}/${grupo.metadatos.fechaEntrada}/${grupo.metadatos.corte}: ${noMovidos} archivo(s) no se pudieron mover; se descuentan del total de entrada (se recontarán en el próximo tick).`,
+            );
+            await this.entryReportRepository.decrementarEntrada(
+              entryReport.id,
+              noMovidos,
+            );
+          }
+
+          // 4. Encolar TODOS los archivos de este corte antes de pasar al
+          // siguiente grupo, para respetar el orden de llegada entre
+          // cortes (no intercalar el procesamiento de corte 2 con el de
+          // corte 1).
+          for (const archivo of archivos) {
+            nombresProcesadosEnEsteTick.add(archivo.name);
+            await this.processFile(
+              archivo.destinationPath,
+              archivo.name,
+              archivo.originalPath,
+              entryReport.id,
+              grupo.metadatos,
+            );
+          }
+        } catch (error: unknown) {
+          // Un corte roto (ej. error de I/O al mover, o falla creando el
+          // EntryReport) no debe abortar el resto de los grupos descubiertos
+          // en este tick: se loguea y se continúa con el siguiente.
+          const errMsg = error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `Error procesando el grupo ${grupo.metadatos.tipoOficio}/${grupo.metadatos.fechaEntrada}/${grupo.metadatos.corte}: ${errMsg}`,
+          );
+        }
+      }
+
+      // 5. Residuos en IN_PATH que no vinieron de ningún grupo descubierto
+      // en ESTE tick (típicamente: un reinicio a mitad del tick anterior,
+      // que ya movió el archivo a IN_PATH pero no llegó a encolarlo). Se
+      // procesan como antes de este cambio, sin metadata de lote de origen.
+      const filesEnIn = await fs.promises.readdir(this.inPath);
+      for (const file of filesEnIn) {
         if (file === '.lock' || file.startsWith('.')) continue;
+        if (nombresProcesadosEnEsteTick.has(file)) continue;
 
         const filePath = path.join(this.inPath, file);
-        const matchedFile = extractedFiles.find((ef) => ef.name === file);
-        const originalPath = matchedFile ? matchedFile.originalPath : filePath;
-        await this.processFile(filePath, file, originalPath);
+        await this.processFile(filePath, file, filePath, null, null);
       }
     } catch (error: any) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -441,6 +545,8 @@ export class ExtractionService implements OnApplicationBootstrap {
     filePath: string,
     fileName: string,
     originalPath: string,
+    entryReportId: string | null,
+    metadatos: MetadatosEntrada | null,
   ) {
     try {
       const stats = await fs.promises.stat(filePath);
@@ -457,10 +563,32 @@ export class ExtractionService implements OnApplicationBootstrap {
           `File ${fileName} (${sizeMb}MB) supera FILE_MAX_SIZE_MB=${maxSizeMB}MB. Marcado NO SOPORTADO.`,
         );
         const movedTo = await this.moveToUnsupported(filePath, fileName);
+        // FORMATO_NO_SOPORTADO nunca va a alcanzar un estado terminal OK ni
+        // de error por la vía normal (no pasa por OCR/modelo/masivo), así
+        // que `publicarEstadoTerminal` jamás se dispara para este documento.
+        // Si simplemente lo dejáramos en `numeroDocumentosEntrada` sin
+        // contarlo en procesados ni en error, el lote (EntryReport) nunca
+        // cumpliría `entrada = procesados + error` y jamás cerraría. Por eso
+        // se incrementa el contador de error del lote AQUÍ MISMO (en vez de
+        // vía la cola de conteo) y se marca `conteoRegistrado: true` en la
+        // misma creación, para que si algún día este documento pasara por
+        // `registrarConteoIdempotente` no se cuente una segunda vez.
+        if (entryReportId) {
+          await this.entryReportRepository.incrementarError(entryReportId);
+        }
         await this.documentRepository.create({
           fileName,
           state: DocumentState.FORMATO_NO_SOPORTADO,
           ocrText: `Archivo demasiado pesado (${sizeMb}MB > ${maxSizeMB}MB): NO SOPORTADO.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+          conteoRegistrado: true,
+          ...(entryReportId ? { entryReport: { connect: { id: entryReportId } } } : {}),
+          ...(metadatos
+            ? {
+                tipoOficio: metadatos.tipoOficio,
+                fechaEntrada: metadatos.fechaEntrada,
+                corte: metadatos.corte,
+              }
+            : {}),
         });
         return;
       }
@@ -503,6 +631,14 @@ export class ExtractionService implements OnApplicationBootstrap {
       const newDoc = await this.documentRepository.create({
         fileName: fileName,
         state: initialState,
+        ...(entryReportId ? { entryReport: { connect: { id: entryReportId } } } : {}),
+        ...(metadatos
+          ? {
+              tipoOficio: metadatos.tipoOficio,
+              fechaEntrada: metadatos.fechaEntrada,
+              corte: metadatos.corte,
+            }
+          : {}),
       });
 
       this.logger.log(

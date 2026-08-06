@@ -15,7 +15,8 @@ Pipeline de procesamiento de documentos judiciales con NestJS, BullMQ (Redis), P
 - **2026-07-31 · `oficioEmbargoADesembargar` por demandado y número de oficio estricto:** el campo pasó de `oficio.oficioEmbargoADesembargar` a `demandados[].oficioEmbargoADesembargar` (igual que `radicadoADesembargar`). Además ya **no** admite sustituir el número de oficio por uno de resolución/acto administrativo: si no hay etiqueta explícita de OFICIO/COMUNICADO queda en `"0"` y el número de resolución va en `radicadoADesembargar`. Ese reemplazo por resolución sigue vigente **solo** para construir `oficio.nombreOficioFinal` (en los 3 tipos de oficio). Ambos campos de desembargo se fuerzan a `"0"` en EMBARGO y ALCANCE.
 - **2026-07-31 · `tipoAplicacion` sin default fuera de EMBARGO:** el relleno automático a `CONGELAR` aplica únicamente a oficios de EMBARGO. En DESEMBARGO y ALCANCE se respeta un `CONGELAR`/`DEBITAR` explícito del documento (o de la columna del Excel de ALCANCE) y en cualquier otro caso queda en `"0"`. Centralizado en `src/common/utils/tipo-oficio.util.ts`, aplicado en el flujo IA, el flujo Excel masivo y el envío a la API externa.
 - **2026-07-21 · Subcarpeta de destino simplificada a solo fecha:** la subcarpeta anticolisión de PDFs destino pasó de `yyyyMMddHHmmss` a `yyyyMMdd` (hora Bogotá, sin hora/min/seg). El sufijo anticolisión de `resolverRutaSinColision` pasó de `_N` a `-N` (ej. `nombre_archivo-1.pdf`). Ver `src/common/utils/file-destination.util.ts`.
-- **2026-07-17 · Carpetas de ingesta renombradas y unificadas:** `SERVER_PATH_1..4` → `SERVER_PATH_EMBARGOS`, `SERVER_PATH_DESEMBARGOS`, `SERVER_PATH_ALCANCES`, `SERVER_PATH_MASIVOS`. `LOCAL_SOURCE_PATHS` ahora usa **el mismo valor** en local, Docker local y Docker producción (`./local/EMBARGOS,./local/DESEMBARGOS,./local/ALCANCES,./local/MASIVOS`) — ya no apunta a rutas internas tipo `/app/source/1`. Ver [sección de arquitectura de archivos](#-arquitectura-de-archivos-modo-local).
+- **2026-08-06 · Estructura de entrada por corte (`CORTE_[n]`) y trazabilidad de lotes (`entry_report`):** los oficios ahora se depositan como `[tipo_oficio]/[YYYYMMDD]/CORTE_[n]/*` (ej. `./local/embargos/20260806/CORTE_1/`); se mantiene compatibilidad con la forma legacy (archivos sueltos en la raíz del tipo, o en `[tipo_oficio]/[YYYYMMDD]/*` sin cortes). Cada terna `(tipo_oficio, fecha_entrada, corte)` genera un registro en la tabla nueva `entry_report`, que cuenta cuántos documentos entraron vs. cuántos terminaron procesados/error, y dispara un Excel consolidado de entrada por corte cuando el lote cierra. Incluye endpoint manual `POST /entry-report/reprocesar`. Ver [Estructura de carpetas de entrada](#-estructura-de-carpetas-de-entrada), [Trazabilidad de lotes](#-trazabilidad-de-lotes-entry_report) y [⚠️ Migración pendiente de aplicar](#️-migración-pendiente-de-aplicar-2026-08-06). **Requiere aplicar una migración SQL manualmente antes de desplegar.**
+- **2026-07-17 · Carpetas de ingesta renombradas y unificadas:** `SERVER_PATH_1..4` → `SERVER_PATH_EMBARGOS`, `SERVER_PATH_DESEMBARGOS`, `SERVER_PATH_ALCANCES`, `SERVER_PATH_MASIVOS`. `LOCAL_SOURCE_PATHS` ahora usa **el mismo valor** en local, Docker local y Docker producción (`./local/embargos,./local/desembargos,./local/alcances,./local/masivos`) — ya no apunta a rutas internas tipo `/app/source/1`. Ver [sección de arquitectura de archivos](#-arquitectura-de-archivos-modo-local).
 - **2026-07-17 · Subcarpeta de destino ahora granular a segundos:** la subcarpeta anticolisión de PDFs destino pasó de `ddMMyyyyHH` a `yyyyMMddHHmmss` (hora Bogotá, año primero para ordenar cronológicamente), para reducir aún más cuántos oficios terminan compartiendo carpeta y por lo tanto cuántos reciben sufijo `_N`. Ver `src/common/utils/file-destination.util.ts`.
 - **2026-07-16 · Anti-colisión de PDFs destino:** los PDFs procesados (flujo individual y masivo) ahora se guardan en una subcarpeta con fecha y hora (hora Bogotá) dentro de `OCR_DESTINATION_PATH` / `EXCEL_DESTINATION_PATH`, con sufijo `_1`, `_2`... si dos oficios generan el mismo nombre final en esa subcarpeta. Antes un `nombreOficioFinal` repetido sobrescribía el PDF anterior. Ver `src/common/utils/file-destination.util.ts`.
 - **2026-07-16 · `valorEmbargo` como texto literal:** Gemini ahora transcribe el monto tal cual aparece en el documento (string, sin limpiar), y la conversión a entero COP se centraliza en `parseValorEmbargo` (`src/common/utils/valor-embargo.util.ts`), usada tanto por el flujo IA como por el flujo Excel masivo. Antes cada flujo lo parseaba distinto y montos como `"16.000.000.00"` se interpretaban mal.
@@ -92,7 +93,7 @@ npx prisma generate
 pnpm run start:dev
 ```
 
-Esto crea automáticamente la estructura de carpetas en `./local/` (incluye `EMBARGOS/`, `DESEMBARGOS/`, `ALCANCES/`, `MASIVOS/`, `in/`, `ocr/`, `ocr-done/`, `excel-done/`, `data/`, `reports/`).
+Esto crea automáticamente la estructura de carpetas en `./local/` (incluye `embargos/`, `desembargos/`, `alcances/`, `masivos/`, `in/`, `ocr/`, `ocr-done/`, `excel-done/`, `data/`, `reports/`, `reporte_entrada/`).
 
 ---
 
@@ -143,7 +144,7 @@ docker-compose down -v
 
 Mismo `docker-compose.yml`, con dos diferencias clave respecto a Docker local:
 
-- **`SERVER_PATH_EMBARGOS` / `SERVER_PATH_DESEMBARGOS` / `SERVER_PATH_ALCANCES` / `SERVER_PATH_MASIVOS`** en el `.env` del servidor deben apuntar a las **rutas reales** de las carpetas a monitorear (no a `./local/...`). `docker-compose.yml` las monta dentro del contenedor en `/app/local/EMBARGOS`, `/app/local/DESEMBARGOS`, `/app/local/ALCANCES` y `/app/local/MASIVOS`.
+- **`SERVER_PATH_EMBARGOS` / `SERVER_PATH_DESEMBARGOS` / `SERVER_PATH_ALCANCES` / `SERVER_PATH_MASIVOS`** en el `.env` del servidor deben apuntar a las **rutas reales** de las carpetas a monitorear (no a `./local/...`). `docker-compose.yml` las monta dentro del contenedor en `/app/local/embargos`, `/app/local/desembargos`, `/app/local/alcances` y `/app/local/masivos` (minúsculas — en Linux el filesystem es case-sensitive, una ruta en mayúsculas no coincide y el escaneo la salta con el warning `Source path does not exist`).
 - **`COMPOSE_PROJECT_NAME`** distinto si conviven varios stacks en el mismo host, y credenciales reales (`GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS` → `./secrets/key.json`, `DOCUMENT_AI_PROCESSOR_ID`, `GCP_PROJECT_ID`).
 
 ```bash
@@ -204,7 +205,8 @@ Solo para ambientes **locales**. Si el entorno se contamina con oficios fantasma
 ./local/unsupported/
 ./local/duplicates/
 ./local/reports/
-./local/EMBARGOS/  ./local/DESEMBARGOS/  ./local/ALCANCES/  ./local/MASIVOS/
+./local/embargos/  ./local/desembargos/  ./local/alcances/  ./local/masivos/
+./local/reporte_entrada/
 ```
 
 **2. Aniquila el historial de la Base de Datos y reaplica el esquema desde cero:**
@@ -235,8 +237,8 @@ Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local
 
 - **Base de Clientes:** Si subes clientes nuevos, debes actualizar y reemplazar el archivo local en `./local/data/clients.csv`. *(El sistema lo relee y refresca en caliente automáticamente cada 1 hora)*.
 - **Ingesta de Oficios:** El sistema puede leer de múltiples carpetas simultáneamente.
-  - **En el Servidor (Docker):** Configura las rutas reales de tus carpetas en el `.env` usando `SERVER_PATH_EMBARGOS`, `SERVER_PATH_DESEMBARGOS`, `SERVER_PATH_ALCANCES` y `SERVER_PATH_MASIVOS`. `docker-compose.yml` las monta dentro del contenedor en `/app/local/EMBARGOS`, `/app/local/DESEMBARGOS`, `/app/local/ALCANCES` y `/app/local/MASIVOS`.
-  - **Configuración:** La variable `LOCAL_SOURCE_PATHS` en el `.env` (`./local/EMBARGOS,./local/DESEMBARGOS,./local/ALCANCES,./local/MASIVOS`) es la ruta que la app realmente lee, y usa el **mismo valor en local, Docker local y Docker prod** — se resuelve relativa a la raíz del proceso (repo en local, `/app` en el contenedor), y el volumen de Docker está mapeado justo a esa misma estructura.
+  - **En el Servidor (Docker):** Configura las rutas reales de tus carpetas en el `.env` usando `SERVER_PATH_EMBARGOS`, `SERVER_PATH_DESEMBARGOS`, `SERVER_PATH_ALCANCES` y `SERVER_PATH_MASIVOS`. `docker-compose.yml` las monta dentro del contenedor en `/app/local/embargos`, `/app/local/desembargos`, `/app/local/alcances` y `/app/local/masivos`.
+  - **Configuración:** La variable `LOCAL_SOURCE_PATHS` en el `.env` (`./local/embargos,./local/desembargos,./local/alcances,./local/masivos`) es la ruta que la app realmente lee, y usa el **mismo valor en local, Docker local y Docker prod** — se resuelve relativa a la raíz del proceso (repo en local, `/app` en el contenedor), y el volumen de Docker está mapeado justo a esa misma estructura. ⚠️ **Todas estas rutas van en minúsculas**: en Linux (case-sensitive) una carpeta configurada en mayúsculas que no coincide con el filesystem real hace que el escaneo la ignore silenciosamente (log `Source path does not exist`).
   - **Procesamiento:** El bot escanea todas estas ubicaciones de forma **recursiva** buscando archivos válidos. Las 3 primeras carpetas procesan cualquier extensión soportada por el flujo individual (OCR/Gemini). **La carpeta MASIVOS es especial**: solo recoge automáticamente Excel/CSV (`.xlsx`/`.xls`/`.csv`), que se procesan en su propia cola (`cola_masivos`, separada de `cola_ocr` para no competir por workers con el flujo individual). Un PDF dejado en MASIVOS **no** se procesa solo — queda "en espera" hasta que un Excel de esa misma carpeta lo reclame por nombre: la plantilla trae el nombre original del PDF (`NOMBRE OFICIO INICIAL`) para localizarlo y el nombre final deseado (`NOMBRE OFICIO FINAL`) para renombrarlo antes de moverlo junto con el Excel a `EXCEL_DESTINATION_PATH`.
 - **Reportes Finales:** Finalizada la IA, tu CSV limpio segmentado por campos se guardará con la fecha de hoy dentro de `./local/reports/`.
 - **Archivos Especiales:** Los archivos duplicados (MD5 existente) se mueven a `./local/duplicates` con un timestamp. Los archivos con formato no soportado (ej. `.docx`, `.zip`) se mueven a `./local/unsupported`.
@@ -245,13 +247,162 @@ Todo sucede dentro de la carpeta raíz aislada de trabajo autogenerada (`./local
 
 ---
 
+## 📁 Estructura de Carpetas de Entrada
+
+Dentro de cada carpeta raíz de `LOCAL_SOURCE_PATHS` (`embargos`, `desembargos`, `alcances`, `masivos`), los oficios se organizan por fecha de entrada y, opcionalmente, por corte:
+
+```text
+local/
+└── embargos/                     # raíz de tipo de oficio (= LOCAL_SOURCE_PATHS)
+    ├── 20260806/                 # fecha de entrada, formato YYYYMMDD
+    │   ├── CORTE_1/               # ← MAYÚSCULAS estrictas, obligatorio "CORTE_<n>"
+    │   │   ├── oficio_a.pdf
+    │   │   └── oficio_b.pdf
+    │   ├── CORTE_2/
+    │   │   └── oficio_c.pdf
+    │   └── ...                   # CORTE_3, CORTE_10, etc. — se procesan en orden numérico
+    │
+    ├── 20260805/                 # forma legacy con fecha, SIN subcarpetas de corte
+    │   └── oficio_suelto.pdf     # corte queda como SIN_CORTE
+    │
+    └── oficio_viejo.pdf          # forma legacy de raíz (archivo suelto sin fecha)
+                                   # se usa la fecha de HOY como fecha de entrada, SIN_CORTE
+```
+
+**Reglas:**
+
+- **`CORTE_[n]` es estricto y en mayúsculas** (`CORTE_1`, `CORTE_23`, ...). Una subcarpeta que no matchee exactamente ese patrón (ej. `corte_1`, `Corte1`, `CORTE-1`) se **ignora**: se loguea un `warn` (`Ignorando carpeta con estructura no soportada...`) y los archivos se dejan **intactos** donde están — no se mueven ni se procesan, hasta que se renombre la carpeta correctamente.
+- Si una carpeta de fecha ya tiene subcarpetas `CORTE_n` válidas, cualquier archivo suelto directamente en esa carpeta de fecha (sin corte) también se ignora, por estar mal ubicado.
+- Los cortes se procesan **en orden numérico** (`CORTE_1`, `CORTE_2`, ..., `CORTE_10`, no orden alfabético), encolando por completo los archivos de un corte antes de pasar al siguiente.
+- Compatibilidad hacia atrás (forma "legacy"): archivos sueltos en la raíz del tipo de oficio, o en `[tipo_oficio]/[YYYYMMDD]/` sin subcarpetas de corte, se siguen procesando igual que antes — con `corte = SIN_CORTE`.
+- Profundidades mayores a `[tipo_oficio]/[YYYYMMDD]/CORTE_[n]/` no están soportadas.
+
+Ver `src/common/utils/ruta-entrada.util.ts` (reglas de parseo) y `src/modules/extraction/strategies/local-file.strategy.ts` (descubrimiento).
+
+---
+
+## 🧾 Trazabilidad de Lotes (`entry_report`)
+
+Cada carpeta de entrada descubierta (una terna `tipo_oficio` + `fecha_entrada` + `corte`) genera o actualiza una fila en la tabla `entry_report`, creada **antes** de mover los archivos (para que el conteo refleje lo que había en la carpeta al momento del descubrimiento, no lo que sobrevive a un movimiento parcialmente fallido).
+
+**Columnas principales:**
+
+| Columna | Descripción |
+| --- | --- |
+| `tipo_oficio`, `fecha_entrada`, `corte` | Clave única del lote (`@@unique`) |
+| `ruta` | Ruta absoluta de la carpeta escaneada |
+| `numero_documentos_entrada` | Cuántos archivos se descubrieron en la carpeta |
+| `numero_documentos_procesados` | Cuántos llegaron a un estado terminal OK (`IA_OK` / `EXCEL_OK`) |
+| `numero_documentos_error` | Cuántos llegaron a un estado terminal de error (`MODEL_ERROR` / `ERROR_OCR`, agotados los reintentos) |
+| `reporte_generado_en` / `reporte_ruta` | Se llenan cuando el cron genera el Excel de ese lote; mientras estén `NULL`, el lote sigue pendiente de reporte |
+
+Cada fila de `documents` guarda también, de forma desnormalizada, `entry_report_id`, `tipo_oficio` (derivado de la carpeta física), `tipo_oficio_ia` (detectado por Gemini, o por la hoja del Excel en el flujo masivo — se guarda aparte para poder auditar discrepancias contra `tipo_oficio`), `fecha_entrada`, `corte`, `nombre_oficio_final` y `conteo_registrado`.
+
+**Flujo por colas:** cuando un `Document` llega a un estado terminal DEFINITIVO, se publica un evento en `cola_conteo_ok` (`IA_OK` / `EXCEL_OK`) o `cola_conteo_error` (`MODEL_ERROR` / `ERROR_OCR` con reintentos de BullMQ agotados), que incrementa `numero_documentos_procesados` o `numero_documentos_error` de forma idempotente (candado `conteo_registrado` en `documents`, verificado y marcado en la misma transacción que incrementa el contador).
+
+> ⚠️ **Los `MODEL_ERROR` / `ERROR_OCR` escritos justo antes de un reintento de BullMQ NO cuentan.** Los processors de OCR/modelo escriben ese estado en DB inmediatamente antes de relanzar la excepción para que BullMQ reintente el job (hasta 3 intentos). Si se publicara el evento de conteo ahí, un mismo documento podría incrementar `numero_documentos_error` hasta 3 veces (una por intento fallido), inflando el contador y rompiendo la igualdad `entrada = procesados + error` de la que depende el cierre del lote. El conteo de error solo se dispara desde el punto en que el estado es realmente definitivo (reintentos agotados, típicamente vía `@OnWorkerEvent('failed')` o en la recuperación tras un reinicio).
+
+**Cuándo se considera cerrado un lote:** cuando `numero_documentos_entrada = numero_documentos_procesados + numero_documentos_error`. A partir de ahí queda disponible para que el cron de reportería genere su Excel.
+
+Ver `src/modules/entry-report/` (repositorio, servicio, processors de las colas de conteo) y `schema.prisma` (modelos `EntryReport` y `Document`).
+
+---
+
+## 📊 Reporte de Entrada
+
+El cron `CRON_ENTRY_REPORT_SCHEDULE` (default `*/5 * * * *`) revisa periódicamente qué lotes de `entry_report` cerraron (`entrada = procesados + error`) y **no** tienen reporte generado. Por cada terna distinta `(fecha_entrada, corte)` con **todos** sus lotes (de todos los tipos de oficio) cerrados, genera un único Excel consolidado con una fila por documento:
+
+| Columna |
+| --- |
+| `FECHA DEL CORTE` |
+| `NUMERO DE CORTE` |
+| `NOMBRE INICIAL` |
+| `NOMBRE FINAL` |
+| `TIPO DE OFICIO` |
+| `FECHA DE CREACION` |
+
+- **Ruta de salida:** `<REPORTE_ENTRADA_PATH>/[YYYYMMDD]/CORTE_[n].xlsx` (ej. `./local/reporte_entrada/20260806/CORTE_1.xlsx` en local, `/opt/reporte_entrada/20260806/CORTE_1.xlsx` en el contenedor).
+- **Cuándo se genera:** solo cuando TODOS los lotes de esa fecha+corte (uno por tipo de oficio que haya tenido archivos en ese corte) están cerrados — así se evita escribir el Excel con filas faltantes de un tipo de oficio que todavía sigue en proceso.
+- Una vez escrito, los lotes involucrados se marcan con `reporte_generado_en` / `reporte_ruta` para no regenerarlo en cada tick.
+
+Ver `src/modules/entry-report/entry-report-excel.service.ts`.
+
+---
+
+## 🔁 Endpoint Manual de Relectura
+
+`POST /entry-report/reprocesar` permite a un operador repetir la lectura de una carpeta `[tipo_oficio]/[YYYYMMDD]/CORTE_[n]` (por ejemplo, si se agregaron archivos a mano tras el escaneo automático) y/o forzar la regeneración del Excel de ese corte, sin esperar al cron.
+
+```bash
+curl -X POST http://localhost:3000/entry-report/reprocesar \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipoOficio": "embargos",
+    "fechaEntrada": "20260806",
+    "corte": "CORTE_1"
+  }'
+```
+
+Qué hace exactamente:
+
+1. **Relee** la carpeta `[tipo_oficio]/[fechaEntrada]/[corte]` (acepta variantes de mayúsculas/minúsculas en `tipoOficio` y `corte`, se normalizan internamente): si hay archivos nuevos, los descubre, suma el lote en `entry_report` y los encola para su procesamiento normal (OCR/Gemini o masivo, según extensión). Si no hay archivos (porque ya se movieron en una corrida anterior) pero ya existe un `entry_report` para esa terna, no falla — simplemente no hay nada nuevo que encolar.
+2. **Regenera** el Excel consolidado de ese corte, en modo forzado: toma de la base de datos **todos** los documentos que existan para esa terna (no solo los recién leídos) y reescribe el archivo, aunque el lote ya estuviera marcado como reportado o todavía no esté cerrado.
+
+Devuelve `entryReportId`, `ruta` (carpeta origen), `archivosEncontrados`, `archivosEncolados` y `reporteRuta` (ruta del Excel regenerado).
+
+Ver `src/modules/entry-report/entry-report.controller.ts`, `entry-report-manual.service.ts` y `dto/reprocesar-corte.dto.ts`.
+
+---
+
+## ⚠️ Migración Pendiente de Aplicar (2026-08-06)
+
+**Este cambio requiere aplicar una migración SQL manualmente antes de desplegar** — este repo no usa `prisma migrate`, así que actualizar `schema.prisma` en el código NO actualiza la base de datos por sí solo.
+
+```bash
+psql -U postgres -d jt_documents -f migrations/20260806_entry_report/migration.sql
+npx prisma generate
+```
+
+(O, si se aplica dentro del contenedor de Postgres en Docker: `docker exec -i jt-db psql -U postgres -d jt_documents < migrations/20260806_entry_report/migration.sql`.)
+
+**Si no se aplica esta migración, la aplicación arranca sin errores pero falla en tiempo de ejecución** con `P2022 - The column documents.entry_report_id does not exist` (comprobado). La migración crea la tabla `entry_report` y agrega a `documents` las columnas `entry_report_id`, `tipo_oficio`, `tipo_oficio_ia`, `fecha_entrada`, `corte`, `nombre_oficio_final` y `conteo_registrado`.
+
+---
+
+## ✅ Cambios Manuales Requeridos para Desplegar
+
+Checklist para quien despliega este cambio (2026-08-06):
+
+1. **Variables de entorno nuevas** — agregar tanto en el `.env` **local** como en el `.env` del **servidor**:
+   ```env
+   REPORTE_ENTRADA_PATH=./local/reporte_entrada
+   SERVER_PATH_REPORTE_ENTRADA=<ruta real en el host del servidor>
+   CRON_ENTRY_REPORT_SCHEDULE=*/5 * * * *
+   EXTRACTION_LOCK_TTL_SECONDS=600
+   ```
+2. **Carpetas a crear:**
+   - Local: `./local/reporte_entrada` (la app la crea sola al arrancar si no existe, igual que el resto de `./local/*`).
+   - Servidor: la carpeta real apuntada por `SERVER_PATH_REPORTE_ENTRADA`, que `docker-compose.yml` monta dentro del contenedor como `/opt/reporte_entrada`.
+3. **Volumen nuevo en `docker-compose.yml`** (ya presente en este repo, verificar que el `docker-compose.yml` de despliegue lo tenga):
+   ```yaml
+   - ${SERVER_PATH_REPORTE_ENTRADA:-./local/reporte_entrada}:/opt/reporte_entrada
+   ```
+4. **Migración SQL** — ver [sección anterior](#️-migración-pendiente-de-aplicar-2026-08-06): `migrations/20260806_entry_report/migration.sql` + `npx prisma generate`.
+5. **Nueva estructura de carpetas para quien deposita los oficios** — ver [Estructura de Carpetas de Entrada](#-estructura-de-carpetas-de-entrada). En resumen: `[tipo_oficio]/[YYYYMMDD]/CORTE_[n]/*`, con `CORTE_[n]` **en mayúsculas exactas**. Una carpeta de corte mal nombrada (minúsculas, sin guion bajo, etc.) se ignora — **los archivos no se pierden** (quedan intactos en su carpeta), pero **tampoco se procesan** hasta corregir el nombre.
+
+---
+
 ## ⚙️ Variables de Entorno Clave
 
 | Variable                   | Descripción                                      |
 | -------------------------- | ------------------------------------------------ |
 | `SERVER_PATH_EMBARGOS/DESEMBARGOS/ALCANCES/MASIVOS` | Rutas absolutas del servidor hacia las 4 carpetas a monitorear (solo Docker) |
-| `LOCAL_SOURCE_PATHS`       | Carpetas que la app escanea, separadas por comas. Mismo valor en local, Docker local y Docker prod (`./local/EMBARGOS,./local/DESEMBARGOS,./local/ALCANCES,./local/MASIVOS`) |
+| `LOCAL_SOURCE_PATHS`       | Carpetas que la app escanea, separadas por comas. Mismo valor en local, Docker local y Docker prod (`./local/embargos,./local/desembargos,./local/alcances,./local/masivos`) — en minúsculas, ver aviso arriba |
 | `MASIVOS_SOURCE_PATH`      | Ruta de la carpeta MASIVOS vista por la app — debe coincidir con el último elemento de `LOCAL_SOURCE_PATHS`. Restringe esa carpeta a solo Excel/CSV y permite localizar el PDF asociado a cada plantilla |
+| `REPORTE_ENTRADA_PATH`     | Carpeta base donde se escribe el Excel de reporte de entrada. Apunta directo a la carpeta final (el código no le agrega ningún segmento extra). Default: `./local/reporte_entrada` |
+| `SERVER_PATH_REPORTE_ENTRADA` | Ruta en el host del servidor que se monta como `/opt/reporte_entrada` dentro del contenedor (solo Docker) |
+| `CRON_ENTRY_REPORT_SCHEDULE` | Expresión cron (5 campos) que revisa qué lotes de `entry_report` cerraron para generar su Excel de entrada. Default: `*/5 * * * *` |
+| `EXTRACTION_LOCK_TTL_SECONDS` | TTL (segundos) del lock distribuido de extracción (Redis). Default: `600` (antes fijo en `120`; se subió porque un tick ahora puede recorrer varias carpetas `CORTE_[n]` en secuencia) |
 | `MASIVO_QUEUE_CONCURRENCY` | Concurrencia de `cola_masivos` (`MasivoProcessor`), independiente de `cola_ocr` (default `2`) |
 | `TENANT_PROFILE`           | Controla esquema Multi-Tenant (`default` \| `bbva` \| `davibank`) |
 | `DATABASE_URL`             | URL de conexión a PostgreSQL                     |

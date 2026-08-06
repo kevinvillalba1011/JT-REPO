@@ -57,6 +57,7 @@ services:
       - ${OCR_DESTINATION_HOST_PATH:-./local/ocr-done}:/opt/ocr-done
       - ${EXCEL_DESTINATION_HOST_PATH:-./local/excel-done}:/opt/excel-done
       - ${OCR_UNREADABLE_HOST_PATH:-./local/ocr-unreadable}:/opt/ocr-unreadable
+      - ${SERVER_PATH_REPORTE_ENTRADA:-./local/reporte_entrada}:/opt/reporte_entrada
       - ./secrets:/app/secrets
     restart: "no"
     networks:

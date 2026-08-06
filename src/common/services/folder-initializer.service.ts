@@ -34,6 +34,13 @@ export class FolderInitializerService implements OnApplicationBootstrap {
           './local/ocr-done',
         ),
       ),
+      path.resolve(
+        process.cwd(),
+        this.configService.get<string>(
+          'REPORTE_ENTRADA_PATH',
+          './local/reporte_entrada',
+        ),
+      ),
 
       // Local source/data paths
       ...this.configService

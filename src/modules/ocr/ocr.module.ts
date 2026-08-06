@@ -8,12 +8,16 @@ import { DocumentAiStrategy } from './strategies/document-ai.strategy';
 import { ExcelExtractorStrategy } from './strategies/excel-extractor.strategy';
 import { MassiveExcelService } from './services/massive-excel.service';
 import { PrismaModule } from '@/common/prisma/prisma.module';
+import { EntryReportModule } from '../entry-report/entry-report.module';
 
 @Module({
   imports: [
     DocumentsModule,
     ConfigModule,
     PrismaModule,
+    // Para que OcrProcessor/MasivoProcessor publiquen el conteo de estados
+    // terminales (EXCEL_OK / ERROR_OCR) vía EntryReportService.
+    EntryReportModule,
     BullModule.registerQueue({
       name: 'cola_modelo', // We are producing to this queue
     }),

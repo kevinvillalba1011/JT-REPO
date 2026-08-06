@@ -25,6 +25,13 @@ export interface BatchResult {
   fallidos: number;
   filasFallidas: number[];
   lotesEnviados: Record<string, any>[];
+  // nombreOficioFinal: el mismo para TODAS las filas del Excel (resuelto una
+  // sola vez, ver Paso 4 abajo), tomado de la primera fila de datos.
+  // tipoOficio: el detectado a nivel de hoja/archivo (EMBARGO/DESEMBARGO/
+  // ALCANCE), SIN el sufijo " MASIVO". MasivoProcessor los persiste en
+  // Document (nombreOficioFinal / tipoOficioIa) al llegar a EXCEL_OK.
+  nombreOficioFinal?: string;
+  tipoOficio?: string;
 }
 
 /**
@@ -116,6 +123,7 @@ export class MassiveExcelService {
         fallidos: 0,
         filasFallidas: [],
         lotesEnviados: [],
+        tipoOficio,
       };
     }
 
@@ -370,6 +378,8 @@ export class MassiveExcelService {
       fallidos: filasFallidas.length,
       filasFallidas,
       lotesEnviados: lotesPayloads,
+      nombreOficioFinal,
+      tipoOficio,
     };
 
     this.logger.log(

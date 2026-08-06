@@ -55,6 +55,29 @@ model Document {
   integrationSentAt DateTime?         @map("integracion_enviado_en")
   integrationError  String?           @map("integracion_error") @db.Text
 
+  // Trazabilidad del lote de entrada (carpeta [tipo_oficio]/[YYYYMMDD]/CORTE_[n]/
+  // de la que vino este documento). Todas nullable salvo conteoRegistrado
+  // porque los documentos históricos (previos a este cambio) no tienen un
+  // lote de origen conocido.
+  entryReportId     String?      @map("entry_report_id")
+  entryReport       EntryReport? @relation(fields: [entryReportId], references: [id])
+  // Derivado de la ruta de entrada (carpeta [tipo_oficio]/...), NO de lo que
+  // detecta el modelo. Se conserva por separado de tipoOficioIa para poder
+  // auditar discrepancias entre "dónde se depositó el archivo" y "qué tipo
+  // de oficio identificó realmente Gemini / la hoja del Excel" — si difieren,
+  // es señal de que el archivo llegó a la carpeta equivocada.
+  tipoOficio        String?      @map("tipo_oficio")
+  tipoOficioIa      String?      @map("tipo_oficio_ia")
+  fechaEntrada      String?      @map("fecha_entrada")
+  corte             String?      @map("corte")
+  nombreOficioFinal String?      @map("nombre_oficio_final")
+  // Candado de idempotencia: el incremento de numeroDocumentosProcesados /
+  // numeroDocumentosError en EntryReport se dispara desde una cola (retries,
+  // reprocesos manuales, mensajes duplicados), y sin este flag un mismo
+  // documento podría contarse más de una vez. Antes de incrementar el
+  // contador del lote se verifica y marca este campo en la misma transacción.
+  conteoRegistrado  Boolean      @default(false) @map("conteo_registrado")
+
   stateLogs DocumentStateLog[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -64,7 +87,38 @@ model Document {
   @@index([createdAt])
   @@index([md5Hash])
   @@index([integrationStatus])
+  @@index([entryReportId])
   @@map("documents")
+}
+
+// Un registro por cada carpeta de lote de entrada
+// ([tipo_oficio]/[YYYYMMDD]/CORTE_[n]/). Lleva el conteo de documentos
+// leídos en la carpeta vs. los que terminaron procesados OK / en error, para
+// poder responder "¿este lote ya se terminó de procesar por completo?" sin
+// tener que recorrer el filesystem.
+model EntryReport {
+  id                         String    @id @default(uuid())
+  fechaCreacion              DateTime  @default(now()) @map("fecha_creacion")
+  tipoOficio                 String    @map("tipo_oficio")
+  fechaEntrada               String    @map("fecha_entrada")
+  corte                      String    @map("corte")
+  ruta                       String    @map("ruta")
+  numeroDocumentosEntrada    Int       @default(0) @map("numero_documentos_entrada")
+  numeroDocumentosProcesados Int       @default(0) @map("numero_documentos_procesados")
+  numeroDocumentosError      Int       @default(0) @map("numero_documentos_error")
+  // reporteGeneradoEn / reporteRuta quedan NULL hasta que el cron que arma el
+  // Excel de reportería corre por primera vez para este lote. Sin este par de
+  // columnas, ese cron no tendría forma de saber si ya generó el reporte de
+  // un lote en un tick anterior y lo regeneraría (y lo re-subiría/reenviaría)
+  // en cada ejecución mientras el lote siga "activo".
+  reporteGeneradoEn          DateTime? @map("reporte_generado_en")
+  reporteRuta                String?   @map("reporte_ruta")
+
+  documents Document[]
+
+  @@unique([tipoOficio, fechaEntrada, corte])
+  @@index([fechaEntrada, corte])
+  @@map("entry_report")
 }
 
 model DocumentStateLog {

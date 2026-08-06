@@ -12,6 +12,7 @@ import type { TenantProfile } from '../tenant/interfaces/tenant-profile.interfac
 import { IntegrationService } from '../integration/integration.service';
 import { DailySequenceService } from '@/common/services/daily-sequence.service';
 import { NombreOficioFinalService } from '@/common/services/nombre-oficio-final.service';
+import { EntryReportService } from '../entry-report/entry-report.service';
 import { nowBogotaISOString, nowBogotaDate } from '@/common/utils/date.util';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { DocumentAiStrategy } from '../ocr/strategies/document-ai.strategy';
@@ -61,6 +62,7 @@ export class ModelProcessor extends WorkerHost {
     private readonly dailySequence: DailySequenceService,
     private readonly nombreOficioFinalService: NombreOficioFinalService,
     private readonly docAiStrategy: DocumentAiStrategy,
+    private readonly entryReportService: EntryReportService,
     @Inject('TENANT_PROFILE') private readonly profile: TenantProfile,
   ) {
     super();
@@ -713,7 +715,20 @@ export class ModelProcessor extends WorkerHost {
         DocumentState.IA_OK,
         {
           jsonModel: resultJson as any,
+          nombreOficioFinal,
+          tipoOficioIa:
+            typeof oficio.tipoOficio === 'string' ? oficio.tipoOficio : null,
         },
+      );
+
+      // Estado terminal DEFINITIVO: la extracción ya se guardó en BD arriba,
+      // sin importar qué pase con el envío al servicio externo más abajo.
+      // Publica acá (no en el updateState de integrationStatus más abajo,
+      // que solo registra el resultado del envío externo y no debe volver
+      // a contar el mismo documento).
+      await this.entryReportService.publicarEstadoTerminal(
+        documentId,
+        DocumentState.IA_OK,
       );
 
       // Integrate with external REST service. sendData() nunca lanza (atrapa
@@ -726,6 +741,9 @@ export class ModelProcessor extends WorkerHost {
         resultJson,
         'IA_OK',
       );
+      // NO se publica acá: este updateState solo registra el resultado del
+      // envío externo (integrationStatus), no es un nuevo estado terminal —
+      // el conteo de IA_OK ya se publicó arriba, justo tras guardar el JSON.
       await this.documentRepository.updateState(
         documentId,
         DocumentState.IA_OK,
@@ -763,13 +781,22 @@ export class ModelProcessor extends WorkerHost {
             },
           },
         );
+        // Estado terminal DEFINITIVO: error permanente, no habrá reintento
+        // (se corta con `return` sin volver a lanzar).
+        await this.entryReportService.publicarEstadoTerminal(
+          documentId,
+          DocumentState.MODEL_ERROR,
+        );
         this.logger.warn(
           `Document ${documentId}: error permanente detectado, no se reintentará.`,
         );
         return;
       }
 
-      // Update state to MODEL_ERROR before re-throwing for BullMQ retries
+      // Update state to MODEL_ERROR before re-throwing for BullMQ retries.
+      // NO se publica acá: este MODEL_ERROR es transitorio, previo a un
+      // reintento de BullMQ (ver `throw error` inmediatamente después). Si
+      // se publicara acá, un mismo documento podría contarse hasta 3 veces.
       await this.documentRepository.updateState(
         documentId,
         DocumentState.MODEL_ERROR,
@@ -817,6 +844,12 @@ export class ModelProcessor extends WorkerHost {
       );
       this.logger.log(
         `Document ${documentId} marked as MODEL_ERROR in database`,
+      );
+      // Estado terminal DEFINITIVO: BullMQ ya agotó todos los reintentos
+      // (`@OnWorkerEvent('failed')` solo se dispara tras el último intento).
+      await this.entryReportService.publicarEstadoTerminal(
+        documentId,
+        DocumentState.MODEL_ERROR,
       );
     } catch (dbError: any) {
       const dbErrMsg =

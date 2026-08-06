@@ -14,6 +14,7 @@ import { TestModule } from './modules/test/test.module';
 import { FolderInitializerService } from './common/services/folder-initializer.service';
 import { DailySequenceModule } from './common/services/daily-sequence.module';
 import { NombreOficioFinalModule } from './common/services/nombre-oficio-final.module';
+import { EntryReportModule } from './modules/entry-report/entry-report.module';
 
 import { validate } from './common/config/env.validation';
 
@@ -44,6 +45,7 @@ import { validate } from './common/config/env.validation';
     IntegrationModule,
     DailySequenceModule,
     NombreOficioFinalModule,
+    EntryReportModule,
     TestModule,
   ],
   providers: [FolderInitializerService],

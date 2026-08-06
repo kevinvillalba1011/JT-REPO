@@ -12,6 +12,7 @@ import {
   PlantillaExcelInvalidaError,
 } from './services/massive-excel.service';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
+import { EntryReportService } from '../entry-report/entry-report.service';
 
 /**
  * Processor dedicado al flujo masivo (Excel/CSV), en su propia cola
@@ -47,6 +48,7 @@ export class MasivoProcessor extends WorkerHost {
     private readonly documentRepository: DocumentRepository,
     private readonly configService: ConfigService,
     private readonly massiveExcelService: MassiveExcelService,
+    private readonly entryReportService: EntryReportService,
   ) {
     super();
     this.excelDestinationPath = path.resolve(
@@ -108,6 +110,12 @@ export class MasivoProcessor extends WorkerHost {
           ocrText: `Error: El archivo físico desapareció de la carpeta de entrada.`,
         },
       );
+      // Estado terminal DEFINITIVO: no hay `throw` después, se corta con
+      // `return` — no habrá reintento de BullMQ para este job.
+      await this.entryReportService.publicarEstadoTerminal(
+        documentId,
+        DocumentState.ERROR_OCR,
+      );
       return;
     }
 
@@ -158,7 +166,23 @@ export class MasivoProcessor extends WorkerHost {
       await this.documentRepository.updateState(
         documentId,
         DocumentState.EXCEL_OK,
-        { ocrText: summaryText, lotesEnviados: batchResult.lotesEnviados },
+        {
+          ocrText: summaryText,
+          lotesEnviados: batchResult.lotesEnviados,
+          // El mismo nombreOficioFinal/tipoOficio aplica a TODAS las filas
+          // del Excel (ver MassiveExcelService.process, resuelto una sola
+          // vez a partir de la primera fila de datos / de la hoja).
+          nombreOficioFinal: batchResult.nombreOficioFinal ?? null,
+          tipoOficioIa: batchResult.tipoOficio ?? null,
+        },
+      );
+
+      // Estado terminal DEFINITIVO: el batch ya se guardó en BD arriba
+      // (éxito total o con fallas parciales por fila — mismo criterio que
+      // ya usa `summaryText`).
+      await this.entryReportService.publicarEstadoTerminal(
+        documentId,
+        DocumentState.EXCEL_OK,
       );
 
       this.logger.log(
@@ -227,6 +251,12 @@ export class MasivoProcessor extends WorkerHost {
               : `Error permanente (sin reintento): ${errorMessage}`,
           },
         );
+        // Estado terminal DEFINITIVO: error permanente, no habrá reintento
+        // (se corta con `return` sin volver a lanzar).
+        await this.entryReportService.publicarEstadoTerminal(
+          documentId,
+          DocumentState.ERROR_OCR,
+        );
         this.logger.warn(
           `Document ${documentId}: error permanente detectado, no se reintentará.`,
         );
@@ -236,6 +266,9 @@ export class MasivoProcessor extends WorkerHost {
       // Update document state to ERROR_OCR before re-throwing for BullMQ retries.
       // Reutiliza ERROR_OCR (mismo criterio que ya usaba el flujo masivo
       // antes de esta separación) en vez de un estado dedicado.
+      // NO se publica acá: este ERROR_OCR es transitorio, previo a un
+      // reintento de BullMQ (ver `throw error` inmediatamente después). Si
+      // se publicara acá, un mismo documento podría contarse hasta 3 veces.
       await this.documentRepository.updateState(
         documentId,
         DocumentState.ERROR_OCR,
@@ -274,6 +307,12 @@ export class MasivoProcessor extends WorkerHost {
         },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);
+      // Estado terminal DEFINITIVO: BullMQ ya agotó todos los reintentos
+      // (`@OnWorkerEvent('failed')` solo se dispara tras el último intento).
+      await this.entryReportService.publicarEstadoTerminal(
+        documentId,
+        DocumentState.ERROR_OCR,
+      );
     } catch (dbError: any) {
       const dbErrorMessage =
         dbError instanceof Error ? dbError.message : String(dbError);
@@ -327,6 +366,14 @@ export class MasivoProcessor extends WorkerHost {
         }
       }
     }
+
+    // Descontar del lote ANTES de borrar el Document (necesita leer su
+    // entryReportId): este documento se sumó a numeroDocumentosEntrada al
+    // escanear la carpeta, pero al eliminarse nunca llegará a un estado
+    // terminal. Sin el descuento, entrada != procesados + error para siempre y
+    // el lote nunca cerraría. El Excel vuelve a su carpeta de origen, así que
+    // el próximo escaneo lo vuelve a contar.
+    await this.entryReportService.descontarDocumentoDeLote(documentId);
 
     await this.documentRepository.delete(documentId);
   }

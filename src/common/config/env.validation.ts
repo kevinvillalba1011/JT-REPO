@@ -63,6 +63,18 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   OCR_DESTINATION_PATH?: string;
+
+  @IsString()
+  @IsOptional()
+  REPORTE_ENTRADA_PATH?: string;
+
+  @IsString()
+  @IsOptional()
+  CRON_ENTRY_REPORT_SCHEDULE?: string;
+
+  @IsNumber()
+  @IsOptional()
+  EXTRACTION_LOCK_TTL_SECONDS?: number;
 }
 
 export function validate(config: Record<string, unknown>) {

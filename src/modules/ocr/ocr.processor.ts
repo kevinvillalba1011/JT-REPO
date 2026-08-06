@@ -15,6 +15,7 @@ import { IntegrationService } from '../integration/integration.service';
 import { isPermanentError } from '@/common/utils/error-classifier.util';
 import { buildDeterministicJobId } from '@/common/utils/job-id.util';
 import { moverArchivoAFechaDestino } from '@/common/utils/file-destination.util';
+import { EntryReportService } from '../entry-report/entry-report.service';
 
 @Processor('cola_ocr', {
   concurrency: 5,
@@ -33,6 +34,7 @@ export class OcrProcessor extends WorkerHost {
     private readonly docAiStrategy: DocumentAiStrategy,
     private readonly excelStrategy: ExcelExtractorStrategy,
     private readonly integrationService: IntegrationService,
+    private readonly entryReportService: EntryReportService,
   ) {
     super();
     this.ocrPath = path.resolve(
@@ -87,6 +89,12 @@ export class OcrProcessor extends WorkerHost {
         {
           ocrText: `Error: El archivo físico desapareció de la carpeta de entrada.`,
         },
+      );
+      // Estado terminal DEFINITIVO: no hay `throw` después, se corta con
+      // `return` — no habrá reintento de BullMQ para este job.
+      await this.entryReportService.publicarEstadoTerminal(
+        documentId,
+        DocumentState.ERROR_OCR,
       );
       return;
     }
@@ -203,13 +211,22 @@ export class OcrProcessor extends WorkerHost {
               : `Error permanente (sin reintento): ${errorMessage}`,
           },
         );
+        // Estado terminal DEFINITIVO: error permanente, no habrá reintento
+        // (se corta con `return` sin volver a lanzar).
+        await this.entryReportService.publicarEstadoTerminal(
+          documentId,
+          DocumentState.ERROR_OCR,
+        );
         this.logger.warn(
           `Document ${documentId}: error permanente detectado, no se reintentará.`,
         );
         return;
       }
 
-      // Update document state to ERROR_OCR before throwing (for visibility)
+      // Update document state to ERROR_OCR before throwing (for visibility).
+      // NO se publica acá: este ERROR_OCR es transitorio, previo a un
+      // reintento de BullMQ (ver `throw error` inmediatamente después). Si
+      // se publicara acá, un mismo documento podría contarse hasta 3 veces.
       await this.documentRepository.updateState(
         documentId,
         DocumentState.ERROR_OCR,
@@ -251,6 +268,12 @@ export class OcrProcessor extends WorkerHost {
         },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);
+      // Estado terminal DEFINITIVO: BullMQ ya agotó todos los reintentos
+      // (`@OnWorkerEvent('failed')` solo se dispara tras el último intento).
+      await this.entryReportService.publicarEstadoTerminal(
+        documentId,
+        DocumentState.ERROR_OCR,
+      );
     } catch (dbError: any) {
       const dbErrorMessage =
         dbError instanceof Error ? dbError.message : String(dbError);
