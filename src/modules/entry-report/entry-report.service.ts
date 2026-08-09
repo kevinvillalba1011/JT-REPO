@@ -90,7 +90,7 @@ export class EntryReportService {
         estado,
       };
 
-      const jobId = `conteo:${documentId}`;
+      const jobId = `conteo-${documentId}`;
       await queue.add('registrar-conteo', payload, {
         jobId,
         attempts: 3,

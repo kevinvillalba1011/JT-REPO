@@ -146,7 +146,7 @@ export class EntryReportRepository {
 
   /**
    * Incrementa el contador correspondiente de forma idempotente. El `jobId`
-   * determinístico de BullMQ (`conteo:${documentId}`) evita que el MISMO job
+   * determinístico de BullMQ (`conteo-${documentId}`) evita que el MISMO job
    * se ejecute dos veces en paralelo, pero no cubre todos los caminos por
    * los que este método puede dispararse más de una vez para el mismo
    * documento: reprocesos manuales que vuelven a llevar el Document a un
