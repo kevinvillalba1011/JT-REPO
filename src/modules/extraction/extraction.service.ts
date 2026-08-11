@@ -6,6 +6,7 @@ import { Queue } from 'bullmq';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Redis } from 'ioredis';
+import { PDFDocument } from 'pdf-lib';
 import { LocalFileStrategy } from './strategies/local-file.strategy';
 import { DocumentRepository } from '../documents/repositories/document.repository';
 import { DocumentState } from '@prisma/client';
@@ -407,6 +408,27 @@ export class ExtractionService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Verifica que el PDF tenga una estructura mínimamente válida (header,
+   * xref, trailer) ANTES de encolarlo, para no gastar un ciclo completo de
+   * OCR/Gemini en un archivo que nunca se va a poder leer. NO valida que el
+   * CONTENIDO sea legible/tenga texto útil — eso lo sigue evaluando la
+   * etapa de modelo más adelante; esto solo descarta basura/truncados.
+   * `ignoreEncryption: true` evita marcar como "corrupto" un PDF que
+   * simplemente está protegido con contraseña (estructura válida, solo
+   * cifrado) — ese caso lo sigue manejando el flujo normal más adelante.
+   * Devuelve `null` si el PDF abre bien, o el mensaje de error si no.
+   */
+  private async validarIntegridadPdf(filePath: string): Promise<string | null> {
+    try {
+      const buffer = await fs.promises.readFile(filePath);
+      await PDFDocument.load(buffer, { ignoreEncryption: true });
+      return null;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
   // The schedule is dynamic from configuration, but we need a fixed decorator or a Dynamic Module approach.
   // NestJS @Cron accepts a string which can be a const, but not directly `config.get()`.
   // However, we can use `Cron(ConfigService.get('CRON_SCHEDULE'))` ONLY if it's evaluated at decorator time (not possible usually).
@@ -581,7 +603,9 @@ export class ExtractionService implements OnApplicationBootstrap {
           state: DocumentState.FORMATO_NO_SOPORTADO,
           ocrText: `Archivo demasiado pesado (${sizeMb}MB > ${maxSizeMB}MB): NO SOPORTADO.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
           conteoRegistrado: true,
-          ...(entryReportId ? { entryReport: { connect: { id: entryReportId } } } : {}),
+          ...(entryReportId
+            ? { entryReport: { connect: { id: entryReportId } } }
+            : {}),
           ...(metadatos
             ? {
                 tipoOficio: metadatos.tipoOficio,
@@ -593,10 +617,55 @@ export class ExtractionService implements OnApplicationBootstrap {
         return;
       }
 
+      const ext = path.extname(fileName).toLowerCase();
+
+      // Validación de integridad SOLO para PDF (el resto de extensiones del
+      // flujo individual son imágenes, sin un chequeo de estructura análogo;
+      // Excel/CSV van a cola_masivos y no se tocan acá). Se hace ANTES de
+      // encolar para no gastar un ciclo completo de OCR/Gemini en un archivo
+      // que nunca se va a poder leer — antes esto fallaba silenciosamente
+      // más adelante en el pipeline (o quedaba atascado) en vez de marcarse
+      // como error de inmediato.
+      if (ext === '.pdf') {
+        const errorIntegridad = await this.validarIntegridadPdf(filePath);
+        if (errorIntegridad) {
+          this.logger.warn(
+            `PDF corrupto/ilegible: ${fileName} — ${errorIntegridad}. Marcado ERROR_OCR sin encolar.`,
+          );
+          const movedTo = await this.moveToReviewFolderDated(
+            filePath,
+            fileName,
+          );
+          // Mismo motivo que en el bloque de "demasiado pesado" arriba: este
+          // documento nunca va a pasar por OCR/modelo, así que hay que
+          // cerrar la cuenta del EntryReport (entrada = procesados + error)
+          // acá mismo en vez de esperar a `registrarConteoIdempotente`.
+          if (entryReportId) {
+            await this.entryReportRepository.incrementarError(entryReportId);
+          }
+          await this.documentRepository.create({
+            fileName,
+            state: DocumentState.ERROR_OCR,
+            ocrText: `PDF corrupto o con estructura inválida (no se pudo abrir antes de encolar): ${errorIntegridad}.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+            conteoRegistrado: true,
+            ...(entryReportId
+              ? { entryReport: { connect: { id: entryReportId } } }
+              : {}),
+            ...(metadatos
+              ? {
+                  tipoOficio: metadatos.tipoOficio,
+                  fechaEntrada: metadatos.fechaEntrada,
+                  corte: metadatos.corte,
+                }
+              : {}),
+          });
+          return;
+        }
+      }
+
       // Enrutamiento por extensión: Excel/CSV va a cola_masivos (procesador
       // dedicado, sin competir por workers con el flujo individual de
       // PDFs/imágenes); el resto sigue a cola_ocr como siempre.
-      const ext = path.extname(fileName).toLowerCase();
       const isMasivo = MASIVO_EXTENSIONS.includes(ext);
       const targetQueue = isMasivo ? this.masivosQueue : this.ocrQueue;
       const jobPrefix = isMasivo ? 'masivo' : 'ocr';
@@ -631,7 +700,9 @@ export class ExtractionService implements OnApplicationBootstrap {
       const newDoc = await this.documentRepository.create({
         fileName: fileName,
         state: initialState,
-        ...(entryReportId ? { entryReport: { connect: { id: entryReportId } } } : {}),
+        ...(entryReportId
+          ? { entryReport: { connect: { id: entryReportId } } }
+          : {}),
         ...(metadatos
           ? {
               tipoOficio: metadatos.tipoOficio,
