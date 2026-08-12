@@ -22,7 +22,22 @@
       "Skill(code-review:*)",
       "Bash(./mvnw.cmd -o -q clean compile)",
       "Bash(npx eslint *)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(npm ls *)",
+      "Bash(node -e \"console.log\\(require.resolve.paths ? 'ok' : 'no'\\)\")",
+      "Bash(npm config *)",
+      "Bash(where node *)",
+      "Bash(npm install *)",
+      "Bash(node build_doc.js \"Documento_Tecnico_Reporte_Entrada.docx\")",
+      "Bash(where soffice *)",
+      "Bash(soffice --version)",
+      "Bash(pandoc --version)",
+      "Bash(npm -v)",
+      "Bash(docker compose *)",
+      "Bash(docker run *)",
+      "Bash(docker exec *)",
+      "Bash(docker start *)",
+      "Bash(docker restart *)"
     ]
   }
 }
