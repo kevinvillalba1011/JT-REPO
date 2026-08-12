@@ -1,18 +1,18 @@
-version: "3.8"
+version: '3.8'
 
 services:
   db:
     image: postgres:14-alpine
     container_name: jt-db
     ports:
-      - "5433:5432"
+      - '5432:5432'
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
       POSTGRES_DB: ${DB_NAME:-jt_documents}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    restart: "no"
+    restart: 'no'
     networks:
       - jt-network
 
@@ -20,8 +20,8 @@ services:
     image: redis:7-alpine
     container_name: jt-redis-llm
     ports:
-      - "6380:6379" # Mapeamos el puerto 6380 (fuera) al 6379 (dentro)
-    restart: "no"
+      - '6380:6379' # Mapeamos el puerto 6380 (fuera) al 6379 (dentro)
+    restart: 'no'
     networks:
       - jt-network
 
@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
     container_name: jt-app
     ports:
-      - "3000:3000"
+      - '3000:3000'
     env_file:
       - .env
     environment:
@@ -59,7 +59,7 @@ services:
       - ${OCR_UNREADABLE_HOST_PATH:-./local/ocr-unreadable}:/opt/ocr-unreadable
       - ${SERVER_PATH_REPORTE_ENTRADA:-./local/reporte_entrada}:/opt/reporte_entrada
       - ./secrets:/app/secrets
-    restart: "no"
+    restart: 'no'
     networks:
       - jt-network
 
