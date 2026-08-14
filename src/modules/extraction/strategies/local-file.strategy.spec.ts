@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
 import { LocalFileStrategy } from './local-file.strategy';
-import { SIN_CORTE } from '@/common/utils/ruta-entrada.util';
+import { SIN_CORTE, FID_FOLDER_NAME } from '@/common/utils/ruta-entrada.util';
 import { carpetaFechaBogota } from '@/common/utils/file-destination.util';
 
 /**
@@ -129,6 +129,59 @@ describe('LocalFileStrategy', () => {
         corte: SIN_CORTE,
         legacy: true,
       });
+    });
+
+    it('agrupa sourceRoot/FECHA/CORTE_n/FID como grupo aparte, con prioritario: true y el mismo corte', async () => {
+      const archivoNormal = path.join(
+        embargosRoot,
+        '20200805',
+        'CORTE_1',
+        'normal.pdf',
+      );
+      const archivoPrioritario = path.join(
+        embargosRoot,
+        '20200805',
+        'CORTE_1',
+        FID_FOLDER_NAME,
+        'urgente.pdf',
+      );
+      crearArchivo(archivoNormal);
+      crearArchivo(archivoPrioritario);
+
+      const strategy = crearEstrategia();
+      const grupos = await strategy.descubrirGrupos();
+
+      expect(grupos).toHaveLength(2);
+      // El grupo prioritario (FID) va primero, aunque comparta fecha/corte.
+      expect(grupos[0].metadatos).toMatchObject({
+        fechaEntrada: '20200805',
+        corte: 'CORTE_1',
+        prioritario: true,
+      });
+      expect(grupos[0].archivos).toEqual([archivoPrioritario]);
+      expect(grupos[1].metadatos).toMatchObject({
+        fechaEntrada: '20200805',
+        corte: 'CORTE_1',
+        prioritario: false,
+      });
+      expect(grupos[1].archivos).toEqual([archivoNormal]);
+    });
+
+    it('subcarpeta de CORTE_n distinta de FID se ignora y no se mueve', async () => {
+      const archivoInvalido = path.join(
+        embargosRoot,
+        '20200805',
+        'CORTE_1',
+        'otra-subcarpeta',
+        'g.pdf',
+      );
+      crearArchivo(archivoInvalido);
+
+      const strategy = crearEstrategia();
+      const grupos = await strategy.descubrirGrupos();
+
+      expect(grupos).toHaveLength(0);
+      expect(fs.existsSync(archivoInvalido)).toBe(true);
     });
 
     it('carpeta con estructura invalida (corte en minuscula) se ignora y no se mueve', async () => {

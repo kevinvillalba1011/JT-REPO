@@ -21,6 +21,15 @@ export const CORTE_REGEX = /^CORTE_(\d+)$/;
 /** Nombre de subcarpeta de fecha de entrada: exactamente 8 digitos (YYYYMMDD). */
 export const FECHA_ENTRADA_REGEX = /^\d{8}$/;
 
+/**
+ * Nombre de subcarpeta de prioridad dentro de un corte
+ * (`[tipo_oficio]/[YYYYMMDD]/CORTE_[n]/FID/`), estricto en mayusculas igual
+ * que CORTE_n. Los archivos ahi pertenecen al MISMO lote que el resto de
+ * CORTE_n (mismo EntryReport, mismo tipoOficio/fechaEntrada/corte) pero se
+ * marcan `prioritario: true` para saltar adelante en las colas de OCR/modelo.
+ */
+export const FID_FOLDER_NAME = 'FID';
+
 export interface MetadatosEntrada {
   /** Tipo de oficio canonico (EMBARGO | DESEMBARGO | ALCANCE | MASIVO). */
   tipoOficio: string;
@@ -32,6 +41,8 @@ export interface MetadatosEntrada {
   ruta: string;
   /** true si la ruta NO viene de una carpeta CORTE_[n] (forma vieja). */
   legacy: boolean;
+  /** true si la ruta viene de CORTE_n/FID/: debe priorizarse en las colas. */
+  prioritario: boolean;
 }
 
 /**
@@ -137,7 +148,12 @@ function segmentosRelativos(sourceRoot: string, dirPath: string): string[] {
  * primer segmento es fecha valida y el segundo es un corte valido
  * (mayusculas estrictas).
  *
- * Profundidad >= 3: no soportada, `null`.
+ * Profundidad 3 (sourceRoot/FECHA/CORTE_n/FID): subcarpeta de prioridad.
+ * Valida solo si ademas el tercer segmento es exactamente "FID". Devuelve
+ * el mismo tipoOficio/fechaEntrada/corte que profundidad 2 (mismo lote,
+ * mismo EntryReport) con `prioritario: true`.
+ *
+ * Profundidad >= 4: no soportada, `null`.
  */
 export function parsearRutaEntrada(
   sourceRoot: string,
@@ -155,6 +171,7 @@ export function parsearRutaEntrada(
       corte: SIN_CORTE,
       ruta,
       legacy: true,
+      prioritario: false,
     };
   }
 
@@ -174,6 +191,7 @@ export function parsearRutaEntrada(
       corte: SIN_CORTE,
       ruta,
       legacy: true,
+      prioritario: false,
     };
   }
 
@@ -188,6 +206,26 @@ export function parsearRutaEntrada(
       corte,
       ruta,
       legacy: false,
+      prioritario: false,
+    };
+  }
+
+  if (segmentos.length === 3) {
+    const [fecha, corte, subcarpeta] = segmentos;
+    if (
+      !esFechaEntradaValida(fecha) ||
+      !esCorteValido(corte) ||
+      subcarpeta !== FID_FOLDER_NAME
+    ) {
+      return null;
+    }
+    return {
+      tipoOficio,
+      fechaEntrada: fecha,
+      corte,
+      ruta,
+      legacy: false,
+      prioritario: true,
     };
   }
 

@@ -70,6 +70,10 @@ model Document {
   tipoOficioIa      String?      @map("tipo_oficio_ia")
   fechaEntrada      String?      @map("fecha_entrada")
   corte             String?      @map("corte")
+  // true si el archivo vino de una subcarpeta CORTE_n/FID/: se encola con
+  // prioridad alta (BullMQ) en cola_ocr y cola_modelo para procesarse antes
+  // que el resto del corte. Ver ruta-entrada.util.ts (MetadatosEntrada.prioritario).
+  prioritario       Boolean      @default(false) @map("prioritario")
   nombreOficioFinal String?      @map("nombre_oficio_final")
   // Candado de idempotencia: el incremento de numeroDocumentosProcesados /
   // numeroDocumentosError en EntryReport se dispara desde una cola (retries,

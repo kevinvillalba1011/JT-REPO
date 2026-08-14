@@ -247,7 +247,12 @@ export class EntryReportManualService {
       tipoOficio: metadatos.tipoOficio,
       fechaEntrada: metadatos.fechaEntrada,
       corte: metadatos.corte,
+      prioritario: metadatos.prioritario,
     });
+
+    // Mismo criterio que ExtractionService.processFile: CORTE_n/FID/ salta
+    // adelante en la cola.
+    const priority = metadatos.prioritario ? 1 : undefined;
 
     try {
       await targetQueue.add(
@@ -257,6 +262,7 @@ export class EntryReportManualService {
           ? {
               jobId,
               attempts: 1,
+              priority,
               removeOnComplete: true,
               removeOnFail: true,
             }
@@ -264,6 +270,7 @@ export class EntryReportManualService {
               jobId,
               attempts: 3,
               backoff: { type: 'exponential', delay: 20000 },
+              priority,
               removeOnComplete: true,
               removeOnFail: true,
             },
