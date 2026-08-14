@@ -36,7 +36,7 @@ services:
       - .env
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-jt_documents}
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       # GCP & Gemini
@@ -46,7 +46,6 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/secret.json
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
-      - db
       - redis
     volumes:
       - ./local:/app/local
