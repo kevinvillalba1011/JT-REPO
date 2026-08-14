@@ -1,10 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Min, IsDateString } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Min } from 'class-validator';
 import { DocumentState } from '@prisma/client';
-import { DateRangeDto } from './date-range.dto';
+import { EntryLoteFilterDto } from './entry-lote-filter.dto';
 
-export class GetDocumentsDto extends DateRangeDto {
+export class GetDocumentsDto extends EntryLoteFilterDto {
   @ApiPropertyOptional({ description: 'Page number', default: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -23,24 +23,4 @@ export class GetDocumentsDto extends DateRangeDto {
   @IsOptional()
   @IsEnum(DocumentState)
   state?: DocumentState;
-
-  @ApiPropertyOptional({
-    description:
-      'Start date (ISO format). Deprecado: usar fechaInicio. Se mantiene por compatibilidad — si se envían ambos, fechaInicio tiene prioridad.',
-    deprecated: true,
-    example: '2026-03-01T00:00:00.000Z',
-  })
-  @IsOptional()
-  @IsDateString()
-  startDate?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'End date (ISO format). Deprecado: usar fechaFin. Se mantiene por compatibilidad — si se envían ambos, fechaFin tiene prioridad.',
-    deprecated: true,
-    example: '2026-03-31T23:59:59.999Z',
-  })
-  @IsOptional()
-  @IsDateString()
-  endDate?: string;
 }

@@ -113,23 +113,28 @@ export class DocumentRepository {
 
   async findWithFilters(filters: {
     state?: DocumentState;
-    startDate?: string;
-    endDate?: string;
+    fechaInicio?: string;
+    fechaFin?: string;
+    fechaEntrada?: string;
+    corte?: string;
     skip: number;
     take: number;
   }): Promise<{ data: Document[]; total: number }> {
-    const { state, startDate, endDate, skip, take } = filters;
+    const { state, fechaInicio, fechaFin, fechaEntrada, corte, skip, take } =
+      filters;
 
     const whereClause: Prisma.DocumentWhereInput = {};
 
     if (state) whereClause.state = state;
+    if (fechaEntrada) whereClause.fechaEntrada = fechaEntrada;
+    if (corte) whereClause.corte = corte;
 
-    if (startDate || endDate) {
+    if (fechaInicio || fechaFin) {
       whereClause.createdAt = {};
-      if (startDate)
-        whereClause.createdAt.gte = parseDateRangeBoundary(startDate, false);
-      if (endDate)
-        whereClause.createdAt.lte = parseDateRangeBoundary(endDate, true);
+      if (fechaInicio)
+        whereClause.createdAt.gte = parseDateRangeBoundary(fechaInicio, false);
+      if (fechaFin)
+        whereClause.createdAt.lte = parseDateRangeBoundary(fechaFin, true);
     }
 
     const [data, total] = await Promise.all([
@@ -163,8 +168,16 @@ export class DocumentRepository {
     });
   }
 
-  async getMetrics(filters?: { fechaInicio?: string; fechaFin?: string }) {
+  async getMetrics(filters?: {
+    fechaInicio?: string;
+    fechaFin?: string;
+    fechaEntrada?: string;
+    corte?: string;
+  }) {
     const whereClause: Prisma.DocumentWhereInput = {};
+    if (filters?.fechaEntrada) whereClause.fechaEntrada = filters.fechaEntrada;
+    if (filters?.corte) whereClause.corte = filters.corte;
+
     if (filters?.fechaInicio || filters?.fechaFin) {
       whereClause.createdAt = {};
       if (filters.fechaInicio)

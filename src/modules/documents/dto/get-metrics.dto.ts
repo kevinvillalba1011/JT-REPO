@@ -1,3 +1,3 @@
-import { DateRangeDto } from './date-range.dto';
+import { EntryLoteFilterDto } from './entry-lote-filter.dto';
 
-export class GetMetricsDto extends DateRangeDto {}
+export class GetMetricsDto extends EntryLoteFilterDto {}
