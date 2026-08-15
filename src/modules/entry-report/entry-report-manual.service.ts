@@ -206,6 +206,7 @@ export class EntryReportManualService {
         fileName,
         state: DocumentState.FORMATO_NO_SOPORTADO,
         ocrText: `Archivo demasiado pesado (${sizeMb}MB > ${maxSizeMB}MB): NO SOPORTADO.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+        rutaArchivo: movedTo,
         conteoRegistrado: true,
         entryReport: { connect: { id: entryReportId } },
         tipoOficio: metadatos.tipoOficio,

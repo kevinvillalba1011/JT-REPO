@@ -151,6 +151,68 @@ export class DocumentRepository {
     return { data, total };
   }
 
+  /**
+   * Documentos en un estado de "error IA" (MODEL_ERROR / ERROR_OCR /
+   * FORMATO_NO_SOPORTADO) cuya fecha EFECTIVA cae dentro de
+   * [fechaInicio, fechaFin] (ambos YYYYMMDD). "Fecha efectiva" es
+   * fecha_entrada si el documento vino de un lote conocido, o created_at
+   * (formateado a YYYYMMDD en hora de Bogotá) para documentos históricos sin
+   * lote — por eso NO se puede expresar con el where builder de Prisma
+   * (COALESCE entre dos columnas de tipos distintos + comparación de rango
+   * sobre el resultado) y se usa `$queryRaw` con SQL parametrizado, mismo
+   * criterio que `EntryReportRepository.findCerradosSinReporte`.
+   */
+  async findErroresIa(filters: {
+    fechaInicio: string;
+    fechaFin: string;
+    skip: number;
+    take: number;
+  }): Promise<{ data: Document[]; total: number }> {
+    const { fechaInicio, fechaFin, skip, take } = filters;
+
+    const [data, totalResult] = await Promise.all([
+      this.prisma.$queryRaw<Document[]>`
+        SELECT
+          id,
+          nombre_archivo AS "fileName",
+          hash_md5 AS "md5Hash",
+          estado AS "state",
+          texto_ocr AS "ocrText",
+          json_modelo AS "jsonModel",
+          lotes_enviados AS "lotesEnviados",
+          estado_integracion AS "integrationStatus",
+          integracion_enviado_en AS "integrationSentAt",
+          integracion_error AS "integrationError",
+          entry_report_id AS "entryReportId",
+          tipo_oficio AS "tipoOficio",
+          tipo_oficio_ia AS "tipoOficioIa",
+          fecha_entrada AS "fechaEntrada",
+          corte,
+          prioritario,
+          nombre_oficio_final AS "nombreOficioFinal",
+          conteo_registrado AS "conteoRegistrado",
+          ruta_archivo AS "rutaArchivo",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM documents
+        WHERE estado IN ('MODEL_ERROR', 'ERROR_OCR', 'FORMATO_NO_SOPORTADO')
+          AND COALESCE(fecha_entrada, to_char(created_at AT TIME ZONE 'America/Bogota', 'YYYYMMDD'))
+            BETWEEN ${fechaInicio} AND ${fechaFin}
+        ORDER BY created_at DESC
+        OFFSET ${skip} LIMIT ${take}
+      `,
+      this.prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(*) AS count
+        FROM documents
+        WHERE estado IN ('MODEL_ERROR', 'ERROR_OCR', 'FORMATO_NO_SOPORTADO')
+          AND COALESCE(fecha_entrada, to_char(created_at AT TIME ZONE 'America/Bogota', 'YYYYMMDD'))
+            BETWEEN ${fechaInicio} AND ${fechaFin}
+      `,
+    ]);
+
+    return { data, total: Number(totalResult[0]?.count ?? 0) };
+  }
+
   async countProcessedToday(): Promise<number> {
     const bogotaNow = nowBogotaDate();
     const startOfDay = new Date(

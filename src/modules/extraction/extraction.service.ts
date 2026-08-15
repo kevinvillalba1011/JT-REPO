@@ -137,6 +137,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             ocrText: movedTo
               ? `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ | Archivo movido a revisión: ${movedTo}`
               : `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ.`,
+            rutaArchivo: movedTo,
           },
         );
         this.logger.warn(
@@ -215,6 +216,7 @@ export class ExtractionService implements OnApplicationBootstrap {
               attempts: recovery.attemptsMade,
               ...(movedTo ? { archivoMovido: movedTo } : {}),
             },
+            rutaArchivo: movedTo,
           },
         );
         this.logger.warn(
@@ -293,6 +295,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             ocrText: movedTo
               ? `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ | Archivo movido a revisión: ${movedTo}`
               : `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ.`,
+            rutaArchivo: movedTo,
           },
         );
         this.logger.warn(
@@ -602,6 +605,7 @@ export class ExtractionService implements OnApplicationBootstrap {
           fileName,
           state: DocumentState.FORMATO_NO_SOPORTADO,
           ocrText: `Archivo demasiado pesado (${sizeMb}MB > ${maxSizeMB}MB): NO SOPORTADO.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+          rutaArchivo: movedTo,
           conteoRegistrado: true,
           ...(entryReportId
             ? { entryReport: { connect: { id: entryReportId } } }
@@ -647,6 +651,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             fileName,
             state: DocumentState.ERROR_OCR,
             ocrText: `PDF corrupto o con estructura inválida (no se pudo abrir antes de encolar): ${errorIntegridad}.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+            rutaArchivo: movedTo,
             conteoRegistrado: true,
             ...(entryReportId
               ? { entryReport: { connect: { id: entryReportId } } }

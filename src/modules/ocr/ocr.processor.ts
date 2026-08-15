@@ -212,6 +212,7 @@ export class OcrProcessor extends WorkerHost {
             ocrText: movedTo
               ? `Error permanente (sin reintento): ${errorMessage} | Archivo movido a revisión: ${movedTo}`
               : `Error permanente (sin reintento): ${errorMessage}`,
+            rutaArchivo: movedTo,
           },
         );
         // Estado terminal DEFINITIVO: error permanente, no habrá reintento
@@ -268,6 +269,7 @@ export class OcrProcessor extends WorkerHost {
           ocrText: movedTo
             ? `Error definitivo: ${err.message} | Archivo movido a revisión: ${movedTo}`
             : `Error definitivo: ${err.message}`,
+          rutaArchivo: movedTo,
         },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);

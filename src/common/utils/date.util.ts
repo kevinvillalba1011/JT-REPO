@@ -60,3 +60,19 @@ export function parseDateRangeBoundary(value: string, endOfDay: boolean): Date {
   }
   return toBogotaDate(new Date(value));
 }
+
+/**
+ * Formatea un `Date` ya almacenado con la convención "hora de Bogotá
+ * etiquetada como UTC" (ver `nowBogotaDate()` / `formatBogotaDate`) a
+ * "YYYYMMDD", igual formato que `documents.fecha_entrada`. Se usa como
+ * fallback cuando `fecha_entrada` es null (documentos históricos): se deriva
+ * de `createdAt` en vez de dejarlo sin fecha. NO resta offset (mismo
+ * criterio que `formatBogotaDate`): el valor crudo ya representa hora de
+ * Bogotá.
+ */
+export function formatBogotaYYYYMMDD(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}

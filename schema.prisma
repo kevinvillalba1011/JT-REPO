@@ -82,6 +82,13 @@ model Document {
   // contador del lote se verifica y marca este campo en la misma transacción.
   conteoRegistrado  Boolean      @default(false) @map("conteo_registrado")
 
+  // Ruta física final a la que se movió el archivo (carpeta de revisión,
+  // no-soportados, etc.) cuando el documento termina en un estado de error.
+  // Antes esta ruta solo quedaba concatenada dentro del texto de error
+  // (ocrText / jsonModel.error), sin un campo consultable aparte — ver
+  // GET /documents/errores-ia.
+  rutaArchivo String? @map("ruta_archivo")
+
   stateLogs DocumentStateLog[]
 
   createdAt DateTime @default(now()) @map("created_at")

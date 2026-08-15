@@ -731,6 +731,16 @@ export class ModelProcessor extends WorkerHost {
         DocumentState.IA_OK,
       );
 
+      // fechaEntrada/corte del lote de origen (documents.fecha_entrada /
+      // documents.corte) van EN LA RAÍZ del payload que recibe
+      // ms-process-document-em, no dentro de "oficio" — se leen del Document
+      // ya persistido arriba (updateState no devuelve el registro completo
+      // con estos campos garantizados, así que se consulta explícitamente).
+      const documentoParaIntegracion =
+        await this.documentRepository.findById(documentId);
+      resultJson.fechaEntrada = documentoParaIntegracion?.fechaEntrada ?? null;
+      resultJson.corte = documentoParaIntegracion?.corte ?? null;
+
       // Integrate with external REST service. sendData() nunca lanza (atrapa
       // sus propios errores) y devuelve un boolean — antes se descartaba,
       // dejando sin rastro en BD si el JSON realmente llegó al sistema
@@ -779,6 +789,7 @@ export class ModelProcessor extends WorkerHost {
               timestamp: nowBogotaISOString(),
               ...(movedTo ? { archivoMovido: movedTo } : {}),
             },
+            rutaArchivo: movedTo,
           },
         );
         // Estado terminal DEFINITIVO: error permanente, no habrá reintento
@@ -840,6 +851,7 @@ export class ModelProcessor extends WorkerHost {
             attempts: job.attemptsMade,
             ...(movedTo ? { archivoMovido: movedTo } : {}),
           },
+          rutaArchivo: movedTo,
         },
       );
       this.logger.log(
