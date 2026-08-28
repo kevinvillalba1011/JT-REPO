@@ -7,6 +7,7 @@ import { GetDocumentsDto } from './dto/get-documents.dto';
 import { GetMetricsDto } from './dto/get-metrics.dto';
 import { GetErroresIaDto } from './dto/get-errores-ia.dto';
 import { formatBogotaYYYYMMDD } from '@/common/utils/date.util';
+import { numeroCorte } from '@/common/utils/ruta-entrada.util';
 
 /**
  * El mensaje de error de un Document vive en un campo distinto según dónde
@@ -105,6 +106,8 @@ export class DocumentService {
     const result = await this.repository.findErroresIa({
       fechaInicio: dto.fechaInicio,
       fechaFin: dto.fechaFin,
+      corte: dto.corte,
+      tipoOficio: dto.tipoOficio,
       skip,
       take: limit,
     });
@@ -126,6 +129,21 @@ export class DocumentService {
         totalPages: Math.ceil(result.total / limit),
       },
     };
+  }
+
+  /**
+   * GET /documents/cortes: cortes disponibles (CORTE_n, o SIN_CORTE si
+   * aplica) para una fecha de entrada dada — pensado para poblar el
+   * selector de corte del front (b2b) después de elegir una fecha. Ordena
+   * numéricamente con `numeroCorte` (CORTE_2 antes que CORTE_10; SIN_CORTE
+   * al final, porque no matchea el patrón CORTE_n y esa función lo manda a
+   * Number.MAX_SAFE_INTEGER a propósito).
+   */
+  async getCortes(fechaEntrada: string): Promise<{ cortes: string[] }> {
+    const cortes =
+      await this.repository.findCortesDistintosPorFecha(fechaEntrada);
+    cortes.sort((a, b) => numeroCorte(a) - numeroCorte(b));
+    return { cortes };
   }
 
   /**

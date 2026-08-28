@@ -1,10 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Matches, IsOptional } from 'class-validator';
 import { DateRangeDto } from './date-range.dto';
-import { FECHA_ENTRADA_REGEX, SIN_CORTE } from '@/common/utils/ruta-entrada.util';
+import {
+  FECHA_ENTRADA_REGEX,
+  SIN_CORTE,
+} from '@/common/utils/ruta-entrada.util';
 
 /** `CORTE_n` (ej. "CORTE_1") o el sentinel `SIN_CORTE` (ver ruta-entrada.util). */
-const CORTE_FILTER_REGEX = new RegExp(`^(CORTE_\\d+|${SIN_CORTE})$`);
+export const CORTE_FILTER_REGEX = new RegExp(`^(CORTE_\\d+|${SIN_CORTE})$`);
 
 /**
  * Filtros por lote de origen ([tipo_oficio]/[YYYYMMDD]/CORTE_[n]/), además
