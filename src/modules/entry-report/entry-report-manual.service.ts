@@ -206,6 +206,7 @@ export class EntryReportManualService {
         fileName,
         state: DocumentState.FORMATO_NO_SOPORTADO,
         ocrText: `Archivo demasiado pesado (${sizeMb}MB > ${maxSizeMB}MB): NO SOPORTADO.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+        rutaArchivo: movedTo,
         conteoRegistrado: true,
         entryReport: { connect: { id: entryReportId } },
         tipoOficio: metadatos.tipoOficio,
@@ -247,7 +248,12 @@ export class EntryReportManualService {
       tipoOficio: metadatos.tipoOficio,
       fechaEntrada: metadatos.fechaEntrada,
       corte: metadatos.corte,
+      prioritario: metadatos.prioritario,
     });
+
+    // Mismo criterio que ExtractionService.processFile: CORTE_n/FID/ salta
+    // adelante en la cola.
+    const priority = metadatos.prioritario ? 1 : undefined;
 
     try {
       await targetQueue.add(
@@ -257,6 +263,7 @@ export class EntryReportManualService {
           ? {
               jobId,
               attempts: 1,
+              priority,
               removeOnComplete: true,
               removeOnFail: true,
             }
@@ -264,6 +271,7 @@ export class EntryReportManualService {
               jobId,
               attempts: 3,
               backoff: { type: 'exponential', delay: 20000 },
+              priority,
               removeOnComplete: true,
               removeOnFail: true,
             },

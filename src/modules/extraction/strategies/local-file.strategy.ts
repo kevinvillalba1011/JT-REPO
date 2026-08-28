@@ -175,8 +175,10 @@ export class LocalFileStrategy implements FileExtractorStrategy {
    *   - Nivel 1: sourceRoot/FECHA (legacy con fecha, o ignorado si esa fecha
    *     ya tiene subcarpetas CORTE_n).
    *   - Nivel 2: sourceRoot/FECHA/CORTE_n (forma nueva).
-   * No desciende más allá del nivel 2: `parsearRutaEntrada` rechaza
-   * cualquier profundidad >= 3.
+   *   - Nivel 3: sourceRoot/FECHA/CORTE_n/FID (mismo lote que el corte,
+   *     marcado prioritario: true).
+   * No desciende más allá del nivel 3: `parsearRutaEntrada` rechaza
+   * cualquier profundidad >= 4.
    */
   private async descubrirGruposDeRoot(
     sourceRoot: string,
@@ -244,6 +246,30 @@ export class LocalFileStrategy implements FileExtractorStrategy {
           dirCorte,
           archivosCorte,
         );
+
+        // Nivel 3: sourceRoot/FECHA/CORTE_n/FID (mismo lote que CORTE_n,
+        // pero prioritario: true — ver parsearRutaEntrada). Cualquier otra
+        // subcarpeta que no sea exactamente "FID" es rechazada por
+        // parsearRutaEntrada e ignorada por agregarGrupoSiAplica, igual que
+        // ya pasa hoy con un CORTE_n mal escrito.
+        const subcarpetasCorte = entradasCorte.filter((entrada) =>
+          entrada.isDirectory(),
+        );
+        for (const subcarpeta of subcarpetasCorte) {
+          const dirSubcarpeta = path.join(dirCorte, subcarpeta.name);
+          const entradasSubcarpeta = await this.leerDirectorio(dirSubcarpeta);
+          const archivosSubcarpeta = this.filtrarArchivos(
+            dirSubcarpeta,
+            entradasSubcarpeta,
+            allowedExtensions,
+          );
+          this.agregarGrupoSiAplica(
+            gruposDatados,
+            sourceRoot,
+            dirSubcarpeta,
+            archivosSubcarpeta,
+          );
+        }
       }
     }
 
@@ -261,7 +287,13 @@ export class LocalFileStrategy implements FileExtractorStrategy {
       // es MAX_SAFE_INTEGER, así que se fuerza explícitamente a -1.
       const claveA = metaA.corte === SIN_CORTE ? -1 : numeroCorte(metaA.corte);
       const claveB = metaB.corte === SIN_CORTE ? -1 : numeroCorte(metaB.corte);
-      return claveA - claveB;
+      if (claveA !== claveB) return claveA - claveB;
+
+      // Mismo corte: el grupo prioritario (CORTE_n/FID) va primero.
+      if (metaA.prioritario !== metaB.prioritario) {
+        return metaA.prioritario ? -1 : 1;
+      }
+      return 0;
     });
 
     return [...gruposRaiz, ...gruposDatados];

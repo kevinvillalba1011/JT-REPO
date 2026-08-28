@@ -152,7 +152,7 @@ export class OcrProcessor extends WorkerHost {
         await fs.promises.unlink(filePath);
       }
 
-      await this.documentRepository.updateState(
+      const updatedDoc = await this.documentRepository.updateState(
         documentId,
         DocumentState.EN_COLA_MODELO,
         {
@@ -183,6 +183,9 @@ export class OcrProcessor extends WorkerHost {
             type: 'exponential',
             delay: 15000, // Waits 15s -> 30s -> 60s if model rate limit hits
           },
+          // Mismo criterio que en ExtractionService: los documentos que
+          // vinieron de CORTE_n/FID/ saltan adelante del resto de cola_modelo.
+          priority: updatedDoc.prioritario ? 1 : undefined,
           removeOnComplete: true,
           removeOnFail: true,
         },
@@ -209,6 +212,7 @@ export class OcrProcessor extends WorkerHost {
             ocrText: movedTo
               ? `Error permanente (sin reintento): ${errorMessage} | Archivo movido a revisión: ${movedTo}`
               : `Error permanente (sin reintento): ${errorMessage}`,
+            rutaArchivo: movedTo,
           },
         );
         // Estado terminal DEFINITIVO: error permanente, no habrá reintento
@@ -265,6 +269,7 @@ export class OcrProcessor extends WorkerHost {
           ocrText: movedTo
             ? `Error definitivo: ${err.message} | Archivo movido a revisión: ${movedTo}`
             : `Error definitivo: ${err.message}`,
+          rutaArchivo: movedTo,
         },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);

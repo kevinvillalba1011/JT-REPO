@@ -2,6 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { normalizarTipoAplicacion } from '@/common/utils/tipo-oficio.util';
 
+/**
+ * Claves de la raíz del payload que `normalizePayload` deja pasar tal cual
+ * (null incluido) en vez de forzarlas a "0". Ver comentario en el loop de
+ * `normalizePayload`.
+ */
+const NORMALIZE_EXEMPT_KEYS = new Set(['fechaEntrada', 'corte']);
+
 @Injectable()
 export class IntegrationService {
   private readonly logger = new Logger(IntegrationService.name);
@@ -187,7 +194,12 @@ export class IntegrationService {
 
     for (const [key, value] of Object.entries(obj)) {
       if (value === null || value === undefined) {
-        normalized[key] = '0';
+        // fechaEntrada/corte quedan EXENTAS del fallback a "0": son metadatos
+        // del lote de origen (documents.fecha_entrada / documents.corte) y
+        // pueden legítimamente no existir (documentos históricos sin lote
+        // conocido) — "0" sería un valor engañoso, no un "sin dato" real
+        // como sí lo es para el resto de campos del oficio.
+        normalized[key] = NORMALIZE_EXEMPT_KEYS.has(key) ? null : '0';
       } else if (Array.isArray(value)) {
         normalized[key] = value
           .map((item) => this.normalizePayload(item))

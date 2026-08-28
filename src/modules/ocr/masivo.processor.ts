@@ -134,6 +134,7 @@ export class MasivoProcessor extends WorkerHost {
       const batchResult = await this.massiveExcelService.process(
         filePath,
         baseName,
+        documentId,
       );
 
       // Mover al destino final externo de archivos Excel/CSV procesados
@@ -249,6 +250,7 @@ export class MasivoProcessor extends WorkerHost {
             ocrText: movedTo
               ? `Error permanente (sin reintento): ${errorMessage} | Archivo movido a revisión: ${movedTo}`
               : `Error permanente (sin reintento): ${errorMessage}`,
+            rutaArchivo: movedTo,
           },
         );
         // Estado terminal DEFINITIVO: error permanente, no habrá reintento
@@ -304,6 +306,7 @@ export class MasivoProcessor extends WorkerHost {
           ocrText: movedTo
             ? `Error definitivo: ${err.message} | Archivo movido a revisión: ${movedTo}`
             : `Error definitivo: ${err.message}`,
+          rutaArchivo: movedTo,
         },
       );
       this.logger.log(`Document ${documentId} marked as ERROR_OCR in database`);
@@ -341,7 +344,8 @@ export class MasivoProcessor extends WorkerHost {
     motivo: string,
   ): Promise<void> {
     const destino =
-      originalPath || path.join(this.masivosSourcePath, path.basename(filePath));
+      originalPath ||
+      path.join(this.masivosSourcePath, path.basename(filePath));
 
     this.logger.warn(
       `Document ${documentId}: ${motivo}. Devolviendo Excel a "${destino}" sin procesar.`,

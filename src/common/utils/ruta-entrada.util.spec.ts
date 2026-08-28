@@ -2,6 +2,7 @@ import * as path from 'path';
 import { carpetaFechaBogota } from './file-destination.util';
 import {
   SIN_CORTE,
+  FID_FOLDER_NAME,
   esCorteValido,
   esFechaEntradaValida,
   normalizarTipoOficioCarpeta,
@@ -87,6 +88,7 @@ describe('parsearRutaEntrada', () => {
       corte: 'CORTE_1',
       ruta: path.resolve(dirPath),
       legacy: false,
+      prioritario: false,
     });
   });
 
@@ -122,6 +124,7 @@ describe('parsearRutaEntrada', () => {
       corte: SIN_CORTE,
       ruta: path.resolve(SOURCE_ROOT),
       legacy: true,
+      prioritario: false,
     });
   });
 
@@ -136,6 +139,7 @@ describe('parsearRutaEntrada', () => {
       corte: SIN_CORTE,
       ruta: path.resolve(dirPath),
       legacy: true,
+      prioritario: false,
     });
   });
 
@@ -148,6 +152,7 @@ describe('parsearRutaEntrada', () => {
       corte: SIN_CORTE,
       ruta: path.resolve(dirPath),
       legacy: true,
+      prioritario: false,
     });
   });
 
@@ -167,8 +172,42 @@ describe('parsearRutaEntrada', () => {
     ).toBeNull();
   });
 
-  it('profundidad >= 3 -> null', () => {
+  it('sourceRoot/FECHA/CORTE_n/FID -> mismo lote que CORTE_n, con prioritario: true', () => {
+    const dirPath = path.join(
+      SOURCE_ROOT,
+      '20200805',
+      'CORTE_1',
+      FID_FOLDER_NAME,
+    );
+    const resultado = parsearRutaEntrada(SOURCE_ROOT, dirPath);
+    expect(resultado).toEqual({
+      tipoOficio: 'EMBARGO',
+      fechaEntrada: '20200805',
+      corte: 'CORTE_1',
+      ruta: path.resolve(dirPath),
+      legacy: false,
+      prioritario: true,
+    });
+  });
+
+  it('sourceRoot/FECHA/CORTE_n/<subcarpeta distinta de FID> -> null', () => {
     const dirPath = path.join(SOURCE_ROOT, '20200805', 'CORTE_1', 'extra');
+    expect(parsearRutaEntrada(SOURCE_ROOT, dirPath)).toBeNull();
+  });
+
+  it('sourceRoot/FECHA/CORTE_n/fid (minuscula) -> null', () => {
+    const dirPath = path.join(SOURCE_ROOT, '20200805', 'CORTE_1', 'fid');
+    expect(parsearRutaEntrada(SOURCE_ROOT, dirPath)).toBeNull();
+  });
+
+  it('profundidad >= 4 -> null', () => {
+    const dirPath = path.join(
+      SOURCE_ROOT,
+      '20200805',
+      'CORTE_1',
+      FID_FOLDER_NAME,
+      'extra',
+    );
     expect(parsearRutaEntrada(SOURCE_ROOT, dirPath)).toBeNull();
   });
 

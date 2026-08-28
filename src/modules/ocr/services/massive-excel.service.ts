@@ -85,10 +85,27 @@ export class MassiveExcelService {
     private readonly nombreOficioFinalService: NombreOficioFinalService,
   ) {}
 
-  async process(filePath: string, fileName: string): Promise<BatchResult> {
+  async process(
+    filePath: string,
+    fileName: string,
+    documentId?: string,
+  ): Promise<BatchResult> {
     this.logger.verbose(
       `[1/5] Iniciando procesamiento de Excel masivo: ${fileName}`,
     );
+
+    // fechaEntrada/corte del lote de origen (documents.fecha_entrada /
+    // documents.corte), para inyectarlos EN LA RAÍZ de cada chunkPayload
+    // enviado a ms-process-document-em (ver Paso 4 más abajo). Se cargan UNA
+    // sola vez acá, fuera del loop de chunks — MassiveExcelService no tiene
+    // a mano el Document del Excel origen (solo recibe filePath/fileName),
+    // así que se consulta por `documentId` (el Document que MasivoProcessor
+    // ya creó para este job antes de invocar `process`).
+    const documentoOrigen = documentId
+      ? await this.prisma.document.findUnique({ where: { id: documentId } })
+      : null;
+    const fechaEntradaLote = documentoOrigen?.fechaEntrada ?? null;
+    const corteLote = documentoOrigen?.corte ?? null;
 
     await this.prisma.excelRecord.deleteMany({
       where: { excelName: fileName },
@@ -319,6 +336,8 @@ export class MassiveExcelService {
         demandantes: firstPayload.demandantes,
         ente: firstPayload.ente,
         infoCliente: firstPayload.infoCliente,
+        fechaEntrada: fechaEntradaLote,
+        corte: corteLote,
       };
       lotesPayloads.push(chunkPayload);
 
@@ -605,7 +624,10 @@ export class MassiveExcelService {
    *    columnas dentro de la misma hoja no rompe el mapeo ni debe rechazar
    *    el Excel.
    */
-  private validarEncabezadosPlantilla(tipoOficio: string, headers: any[]): void {
+  private validarEncabezadosPlantilla(
+    tipoOficio: string,
+    headers: any[],
+  ): void {
     if (!SUPPORTED_TIPOS_OFICIO.includes(tipoOficio)) {
       throw new PlantillaExcelInvalidaError(
         `No se pudo identificar el tipo de oficio del Excel (el nombre de la ` +
@@ -615,9 +637,7 @@ export class MassiveExcelService {
     }
 
     const headersDetectados = new Set(
-      headers
-        .map((h) => normalizeHeader(h))
-        .filter((h) => h.length > 0),
+      headers.map((h) => normalizeHeader(h)).filter((h) => h.length > 0),
     );
 
     const headersEsperados = PLANTILLA_HEADERS[tipoOficio] ?? [];

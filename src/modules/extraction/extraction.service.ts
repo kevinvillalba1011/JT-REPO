@@ -137,6 +137,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             ocrText: movedTo
               ? `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ | Archivo movido a revisión: ${movedTo}`
               : `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ.`,
+            rutaArchivo: movedTo,
           },
         );
         this.logger.warn(
@@ -215,6 +216,7 @@ export class ExtractionService implements OnApplicationBootstrap {
               attempts: recovery.attemptsMade,
               ...(movedTo ? { archivoMovido: movedTo } : {}),
             },
+            rutaArchivo: movedTo,
           },
         );
         this.logger.warn(
@@ -293,6 +295,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             ocrText: movedTo
               ? `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ | Archivo movido a revisión: ${movedTo}`
               : `Error definitivo (detectado en recuperación tras reinicio): intentos agotados en BullMQ.`,
+            rutaArchivo: movedTo,
           },
         );
         this.logger.warn(
@@ -602,6 +605,7 @@ export class ExtractionService implements OnApplicationBootstrap {
           fileName,
           state: DocumentState.FORMATO_NO_SOPORTADO,
           ocrText: `Archivo demasiado pesado (${sizeMb}MB > ${maxSizeMB}MB): NO SOPORTADO.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+          rutaArchivo: movedTo,
           conteoRegistrado: true,
           ...(entryReportId
             ? { entryReport: { connect: { id: entryReportId } } }
@@ -647,6 +651,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             fileName,
             state: DocumentState.ERROR_OCR,
             ocrText: `PDF corrupto o con estructura inválida (no se pudo abrir antes de encolar): ${errorIntegridad}.${movedTo ? ` Movido a: ${movedTo}` : ''}`,
+            rutaArchivo: movedTo,
             conteoRegistrado: true,
             ...(entryReportId
               ? { entryReport: { connect: { id: entryReportId } } }
@@ -708,6 +713,7 @@ export class ExtractionService implements OnApplicationBootstrap {
               tipoOficio: metadatos.tipoOficio,
               fechaEntrada: metadatos.fechaEntrada,
               corte: metadatos.corte,
+              prioritario: metadatos.prioritario,
             }
           : {}),
       });
@@ -723,6 +729,11 @@ export class ExtractionService implements OnApplicationBootstrap {
       // repetiría el parseo del Excel y el reenvío desde cero, arriesgando
       // envíos duplicados al servicio externo. cola_ocr mantiene attempts: 3
       // como hasta ahora.
+      // priority: 1 (más alto) para documentos de CORTE_n/FID/, así saltan
+      // adelante de jobs ya esperando en la cola de ticks anteriores. Sin
+      // este campo, BullMQ los procesa FIFO por orden de encolado.
+      const priority = metadatos?.prioritario ? 1 : undefined;
+
       try {
         await targetQueue.add(
           jobName,
@@ -735,6 +746,7 @@ export class ExtractionService implements OnApplicationBootstrap {
             ? {
                 jobId,
                 attempts: 1,
+                priority,
                 removeOnComplete: true,
                 removeOnFail: true,
               }
@@ -745,6 +757,7 @@ export class ExtractionService implements OnApplicationBootstrap {
                   type: 'exponential',
                   delay: 20000, // 20s delay on retry (Wait, requirement says "2 reintentos y delay de 20s" - usually means fixed delay or specific backoff)
                 },
+                priority,
                 removeOnComplete: true,
                 removeOnFail: true,
               },

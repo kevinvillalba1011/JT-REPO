@@ -25,8 +25,14 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
 
-  // Enable CORS for frontend integration
-  app.enableCors();
+  // El front nunca llama a JT-REPO directo: siempre pasa por ms-gateway-em
+  // (ruta /api/jt/**), que ya agrega su propio Access-Control-Allow-Origin.
+  // Si JT-REPO TAMBIÉN agrega el suyo (antes: `app.enableCors()`, sin
+  // argumentos -> "*"), la respuesta proxied termina con DOS valores
+  // distintos de Access-Control-Allow-Origin ("*" de acá + el del gateway),
+  // lo que el navegador rechaza por CORS (spec: más de un valor = bloqueo),
+  // incluso en un 200 exitoso — el body nunca llega a Angular. El gateway es
+  // la única fuente de CORS para tráfico de navegador; acá no hace falta.
 
   app.useGlobalPipes(
     new ValidationPipe({
