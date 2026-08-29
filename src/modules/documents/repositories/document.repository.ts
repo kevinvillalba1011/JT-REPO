@@ -165,28 +165,10 @@ export class DocumentRepository {
   async findErroresIa(filters: {
     fechaInicio: string;
     fechaFin: string;
-    corte?: string;
-    tipoOficio?: string;
     skip: number;
     take: number;
   }): Promise<{ data: Document[]; total: number }> {
-    const { fechaInicio, fechaFin, corte, tipoOficio, skip, take } = filters;
-
-    // Fragmento opcional vía Prisma.sql/Prisma.empty: mantiene el filtro
-    // parametrizado (sin concatenar el valor a mano) y no rompe la firma
-    // existente cuando `corte` no viene — el WHERE queda idéntico al de antes.
-    const filtroCorte = corte ? Prisma.sql`AND corte = ${corte}` : Prisma.empty;
-
-    // "SIN_TIPO" NO es un valor real de la columna — es "cualquier cosa que
-    // no sea una de las 3 categorías reales" (null, vacío, "MASIVO", etc.).
-    // La lista EMBARGO/DESEMBARGO/ALCANCE es una constante fija del código
-    // (no viene del usuario), por eso va literal en el SQL sin parametrizar.
-    let filtroTipoOficio = Prisma.empty;
-    if (tipoOficio === 'SIN_TIPO') {
-      filtroTipoOficio = Prisma.sql`AND (tipo_oficio IS NULL OR tipo_oficio NOT IN ('EMBARGO', 'DESEMBARGO', 'ALCANCE'))`;
-    } else if (tipoOficio) {
-      filtroTipoOficio = Prisma.sql`AND tipo_oficio = ${tipoOficio}`;
-    }
+    const { fechaInicio, fechaFin, skip, take } = filters;
 
     const [data, totalResult] = await Promise.all([
       this.prisma.$queryRaw<Document[]>`
@@ -216,8 +198,6 @@ export class DocumentRepository {
         WHERE estado IN ('MODEL_ERROR', 'ERROR_OCR', 'FORMATO_NO_SOPORTADO')
           AND COALESCE(fecha_entrada, to_char(created_at AT TIME ZONE 'America/Bogota', 'YYYYMMDD'))
             BETWEEN ${fechaInicio} AND ${fechaFin}
-          ${filtroCorte}
-          ${filtroTipoOficio}
         ORDER BY created_at DESC
         OFFSET ${skip} LIMIT ${take}
       `,
@@ -227,37 +207,10 @@ export class DocumentRepository {
         WHERE estado IN ('MODEL_ERROR', 'ERROR_OCR', 'FORMATO_NO_SOPORTADO')
           AND COALESCE(fecha_entrada, to_char(created_at AT TIME ZONE 'America/Bogota', 'YYYYMMDD'))
             BETWEEN ${fechaInicio} AND ${fechaFin}
-          ${filtroCorte}
-          ${filtroTipoOficio}
       `,
     ]);
 
     return { data, total: Number(totalResult[0]?.count ?? 0) };
-  }
-
-  /**
-   * Cortes distintos (CORTE_n, o SIN_CORTE si aplica) que existen para una
-   * fecha de entrada dada. Fuente: Document (tabla `documents`), NO
-   * EntryReport — EntryReport es el catálogo de LOTES descubiertos por el
-   * cron, no de documentos; un lote sin fila en EntryReport (ej. row nunca
-   * upserteada, o un reproceso manual que no pasó por `upsertPorClave`)
-   * dejaba su corte invisible para este selector aunque los Document con
-   * ese corte SÍ existieran — justo el bug que reportó el usuario (CORTE_2
-   * no aparecía). GET /documents/errores-ia, que este selector alimenta,
-   * también consulta `documents` directamente, así que la fuente debe ser
-   * la misma tabla para que el selector siempre refleje lo que ese
-   * endpoint realmente va a poder filtrar. Usa `distinct` nativo de Prisma,
-   * sin SQL crudo.
-   */
-  async findCortesDistintosPorFecha(fechaEntrada: string): Promise<string[]> {
-    const filas = await this.prisma.document.findMany({
-      where: { fechaEntrada },
-      select: { corte: true },
-      distinct: ['corte'],
-    });
-    return filas
-      .map((fila) => fila.corte)
-      .filter((corte): corte is string => corte !== null);
   }
 
   async countProcessedToday(): Promise<number> {
