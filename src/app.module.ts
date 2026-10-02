@@ -11,6 +11,7 @@ import { ClientModule } from './modules/client/client.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { IntegrationModule } from './modules/integration/integration.module';
 import { TestModule } from './modules/test/test.module';
+import { ExtractionManualModule } from './modules/extraction-manual/extraction-manual.module';
 import { FolderInitializerService } from './common/services/folder-initializer.service';
 import { DailySequenceModule } from './common/services/daily-sequence.module';
 import { NombreOficioFinalModule } from './common/services/nombre-oficio-final.module';
@@ -47,6 +48,7 @@ import { validate } from './common/config/env.validation';
     NombreOficioFinalModule,
     EntryReportModule,
     TestModule,
+    ExtractionManualModule,
   ],
   providers: [FolderInitializerService],
 })

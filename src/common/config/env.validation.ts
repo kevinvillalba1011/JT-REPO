@@ -75,6 +75,10 @@ export class EnvironmentVariables {
   @IsNumber()
   @IsOptional()
   EXTRACTION_LOCK_TTL_SECONDS?: number;
+
+  @IsString()
+  @IsOptional()
+  EXTRACTION_MANUAL_API_KEY?: string;
 }
 
 export function validate(config: Record<string, unknown>) {

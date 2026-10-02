@@ -1,171 +1,286 @@
 import { SchemaType } from '@google/generative-ai';
 import { TenantProfile } from '../interfaces/tenant-profile.interface';
 
+/**
+ * Perfil BBVA — repurpuesto para el botón "Rellenar datos" del portal B2B
+ * legado (EmbargosWebJTC / JBoss). No confundir con el flujo batch de
+ * microservicios: este perfil NO estaba en uso productivo (davibank es el
+ * que corre en producción), así que se ajustó libremente a los campos de
+ * negocio catalogados en `campos_por_tipo_documento_3.json`
+ * (EMBARGO/DESEMBARGO/ALCANCE), que es lo que necesita el formulario de
+ * captura manual del portal. Ver .agents/decisions.md.
+ *
+ * Un solo responseSchema cubre los tres tipos de oficio: `tipoOficio` le
+ * dice al consumidor cuáles de los demás campos aplican. Campos que no
+ * aplican al tipo de oficio detectado, o que el modelo no encuentra en el
+ * documento, se devuelven como "0" (string) — misma convención de fallback
+ * que ya usa el resto del pipeline (ver normalizeNumericField/
+ * normalizeNameField en ModelProcessor).
+ */
 export const BbvaProfile: TenantProfile = {
   id: 'bbva',
-  // Para ubicar cuál campo usar para verificar si es cliente del banco
-  // Asumiremos que validamos cada identificacion de la lista de demandados en la capa posterior (ModelProcessor),
-  // pero el TenantProfile actual exige un 'identifierKey' global. Dado que ahora es un array 'demandados',
-  // temporalmente pondremos 'demandados' para que la lógica de limpieza intente buscar por ahí.
-  // Nota: Deberás adaptar ModelProcessor si quieres en el futuro cruzar la DB Cliente contra Arreglos Anidados.
-  identifierKey: 'demandados',
+  identifierKey: 'noIdDemandado',
 
-  // Como la estructura es de múltiples entidades (matrices), la reportería plana
-  // puede que necesite un export customizado o simplemente exportamos el JSON completo.
   clientFields: [
-    'tipoDocumento',
-    'nombreEntidad',
+    'noIdDemandado',
+    'fechaHoraRecepcionCorreo',
+    'fechaHoraProcesamientoOficio',
+    'tipoProceso',
+    'tipoOficio',
+    'nombreOficioInicial',
+    'nombreOficioFinal',
+    'valorEmbargo',
+    'noRadicado',
+    'cuentaBancoAgrarioDepositoJudicial',
+    'nombreBancoDepositoJudicial',
+    'nombreSecretarioFuncionario',
+    'codigoAlcance',
+    'codigoAplicacion',
+    'tipoLimiteInembargabilidad',
+    'tipoAplicacion',
+    'tipoRespuesta',
+    'tipoIdDemandado',
+    'nombreDemandado',
+    'tipoIdDemandante',
+    'noIdDemandante',
+    'nombreDemandante',
+    'nombreEnteEmbargante',
     'ciudad',
-    'departamento',
-    'nRadicado',
-    'nOficio',
-    'nCtaDptoJudicial',
-    'fechaOficio',
-    'coactivo',
-    'nombreFuncionario',
-    'cargoFuncionario',
-    'fechaHoraProceso',
-    'nombreArchivo',
-    'rutaPdf',
-    'usuario',
-    'procesado',
-    'demandantes',
-    'demandados',
-    'entidadesBancarias',
+    'correosElectronicos',
+    'linkColocacionRespuesta',
+    'productosAEmbargar',
+    'ctaEspecificaNumero',
+    'porcentajeAEmbargar',
+    'productosAFuturo',
+    'tipoDocumentoRecibidoEmail',
+    'tipoDeRequerimiento',
+    'tipoDeRequerimientoInembargable',
+    'observaciones',
+    'oficioEmbargoADesembargar',
+    'radicadoOficioEmbargoADesembargar',
   ],
-  nonClientFields: ['tipoDocumento', 'nRadicado', 'fechaOficio', 'procesado'],
+  nonClientFields: ['tipoOficio', 'noRadicado', 'tipoProceso'],
 
   responseSchema: {
     type: SchemaType.OBJECT,
     properties: {
-      tipoDocumento: {
+      noIdDemandado: {
         type: SchemaType.STRING,
         description:
-          'Clasificación válida: EMBARGO, DESEMBARGO, TRASLADO, REITERACION, VINCULO, ACLARACION, DESCONOCIDO',
+          'Numero de identificacion del demandado/accionado/embargado/procesado. Solo digitos, sin puntos ni comas. "0" si no se encuentra.',
       },
-      nombreEntidad: { type: SchemaType.STRING },
-      ciudad: { type: SchemaType.STRING },
-      departamento: { type: SchemaType.STRING },
-      nRadicado: {
+      fechaHoraRecepcionCorreo: {
         type: SchemaType.STRING,
         description:
-          '23 dígitos numéricos sin guiones ni espacios. Completar con ceros a la izquierda.',
+          'Fecha y hora de recepcion del correo. Formato DD/MM/AAAA HH:mm:ss. "0" si no aplica o no se encuentra.',
       },
-      nOficio: {
+      fechaHoraProcesamientoOficio: {
         type: SchemaType.STRING,
-        description: 'Exactamente 4 dígitos. Ignora No. o N°',
+        description:
+          'Fecha y hora de procesamiento del registro. Formato DD/MM/AAAA HH:mm:ss. "0" si no aplica.',
       },
-      nCtaDptoJudicial: { type: SchemaType.STRING },
-      fechaOficio: {
+      tipoProceso: {
         type: SchemaType.STRING,
-        description: 'Formato yyyy-MM-dd',
+        description:
+          'JUDICIAL (entidades o procesos judiciales) o COACTIVO (entidades del estado/autonomas en su gestion).',
       },
-      coactivo: { type: SchemaType.BOOLEAN },
-      nombreFuncionario: { type: SchemaType.STRING },
-      cargoFuncionario: { type: SchemaType.STRING },
-      fechaHoraProceso: {
+      tipoOficio: {
         type: SchemaType.STRING,
-        description: 'yyyy-MM-dd HH:mm:ss',
+        description:
+          'EMBARGO (embargo, secuestro, bloqueo, retencion, medida cautelar, librar mandamiento de pago), DESEMBARGO (desembargo, levantamiento, dejar sin efecto, liberacion, cancelacion, suspender), o ALCANCE (reiteracion, requerir, mantenimiento, oficiar, incidente, sancion, desacato, notificar, ampliar).',
       },
-      nombreArchivo: { type: SchemaType.STRING },
-      rutaPdf: { type: SchemaType.STRING },
-      usuario: { type: SchemaType.STRING },
-      procesado: { type: SchemaType.BOOLEAN },
-      demandantes: {
-        type: SchemaType.ARRAY,
-        items: {
-          type: SchemaType.OBJECT,
-          properties: {
-            nombre: {
-              type: SchemaType.STRING,
-              description: 'Solo nombres y apellidos',
-            },
-            tipoIdentificacion: {
-              type: SchemaType.STRING,
-              description: 'CC o NIT',
-            },
-            identificacion: {
-              type: SchemaType.STRING,
-              description: 'Solo dígitos',
-            },
-          },
-        },
+      nombreOficioInicial: {
+        type: SchemaType.STRING,
+        description:
+          'Nombre del documento/oficio con el que se transmitio para gestion. "0" si no aplica o no se encuentra.',
       },
-      demandados: {
-        type: SchemaType.ARRAY,
-        items: {
-          type: SchemaType.OBJECT,
-          properties: {
-            nombre: {
-              type: SchemaType.STRING,
-              description: 'Solo nombres y apellidos',
-            },
-            tipoIdentificacion: {
-              type: SchemaType.STRING,
-              description: 'CC o NIT',
-            },
-            identificacion: {
-              type: SchemaType.STRING,
-              description: 'Solo dígitos',
-            },
-            valorEmbargo: {
-              type: SchemaType.NUMBER,
-              description: 'Valor monetario como número',
-            },
-            numeroProceso: { type: SchemaType.STRING },
-            cliente: { type: SchemaType.BOOLEAN },
-            clienteEspecial: { type: SchemaType.BOOLEAN },
-          },
-        },
+      nombreOficioFinal: {
+        type: SchemaType.STRING,
+        description:
+          '"0" siempre - este campo lo calcula el sistema de captura, no lo extraigas del documento.',
       },
-      entidadesBancarias: {
-        type: SchemaType.ARRAY,
-        items: {
-          type: SchemaType.OBJECT,
-          properties: {
-            nombre: { type: SchemaType.STRING },
-            emailNotificacion: { type: SchemaType.STRING },
-          },
-        },
+      valorEmbargo: {
+        type: SchemaType.STRING,
+        description:
+          'Valor del embargo. Solo digitos, sin puntos, comas ni decimales. Si esta en letras, conviertelo a numero entero. No aplica a DESEMBARGO. "0" si no aplica o no se encuentra.',
+      },
+      noRadicado: {
+        type: SchemaType.STRING,
+        description:
+          'Numero de radicado/resolucion/expediente/proceso. Hasta 23 digitos, solo numeros. "0" si no se encuentra.',
+      },
+      cuentaBancoAgrarioDepositoJudicial: {
+        type: SchemaType.STRING,
+        description:
+          'Cuenta de deposito judicial / Banco Agrario. Solo digitos. No aplica a DESEMBARGO. "0" si no aplica o no se encuentra.',
+      },
+      nombreBancoDepositoJudicial: {
+        type: SchemaType.STRING,
+        description:
+          'Nombre del banco donde se deben hacer los depositos judiciales. No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      nombreSecretarioFuncionario: {
+        type: SchemaType.STRING,
+        description:
+          'Secretario/funcionario/persona que firma el documento o medida cautelar. "0" si no se encuentra.',
+      },
+      codigoAlcance: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. Codigo si algun dato capturado falta o es inconsistente (1-INCO ID DDO, 2-INCO ID DDTE, 3-INCO TIT VS DEC, 4-INCO ID ILEGIBLE, 5-INCO VALOR, 6-INCO RADICADO, 7-INCO NO DIRIGIDO AL BANCO, 8-INCO NO INDICA COMO PROCEDER, 9-INCO CTA BANCO AGRARIO, 10-INCO BENEFICIO DE INEMBARGABILIDAD, 11-REQUERIMIENTO (RQ), 12-REITERACION, 13-CAMBIO DE CUENTA DEPOSITO JUDICIAL (WEB), 14-CAMBIO DE CUANTIA, 15-INFORMATIVO, 16-DERECHO PETICION/TUTELA (OTRAS AREAS), 17-OFICIO EN BLANCO (INCOMPLETO), 18-SIN INFO PARA CORRESPONDENCIA, 19-ACLARACION). "0" si no aplica.',
+      },
+      codigoAplicacion: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. Codigo de aplicacion segun el banco. "0" si no aplica o no se encuentra.',
+      },
+      tipoLimiteInembargabilidad: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. Norma/justificacion legal del limite de inembargabilidad (ej. Art. 837-1 ET, Decreto 379 de 2007, Ley 100 art. 134, etc). "0" si no aplica.',
+      },
+      tipoAplicacion: {
+        type: SchemaType.STRING,
+        description:
+          'CONGELAR (mantener/congelar/bloquear recursos) o DEBITAR (consignar/debitar/dejar a disposicion). No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      tipoRespuesta: {
+        type: SchemaType.STRING,
+        description:
+          'EMAIL, FISICO o LINK. Si no se indica pero hay correo electronico, usa EMAIL. No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      tipoIdDemandado: {
+        type: SchemaType.STRING,
+        description:
+          'C o CC (cedula ciudadania), E (cedula extranjeria), N o NIT, T o TI (tarjeta identidad), P o PA (pasaporte). "0" si no se encuentra.',
+      },
+      nombreDemandado: {
+        type: SchemaType.STRING,
+        description:
+          'Nombre del demandado/accionado/embargado/procesado. "0" si no se encuentra.',
+      },
+      tipoIdDemandante: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. Un solo caracter: C, E, N, T o P. "0" si no aplica.',
+      },
+      noIdDemandante: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. Numero de identificacion del demandante/accionante. Solo digitos. "0" si no aplica.',
+      },
+      nombreDemandante: {
+        type: SchemaType.STRING,
+        description:
+          'Nombre del demandante/accionante. No aplica a DESEMBARGO. "0" si no aplica o no se encuentra.',
+      },
+      nombreEnteEmbargante: {
+        type: SchemaType.STRING,
+        description:
+          'Nombre de la entidad que emite la orden (ej. DIAN, juzgado, gobernacion). No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      ciudad: {
+        type: SchemaType.STRING,
+        description:
+          'Ciudad donde se emite el documento. No aplica a DESEMBARGO. "0" si no aplica o no se encuentra.',
+      },
+      correosElectronicos: {
+        type: SchemaType.STRING,
+        description:
+          'Correo(s) para respuesta, cuando tipoRespuesta es EMAIL. No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      linkColocacionRespuesta: {
+        type: SchemaType.STRING,
+        description:
+          'Link o direccion fisica para cargar la respuesta. No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      productosAEmbargar: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO: TODOS, AHORROS, CORRIENTES o CDTS. "0" si no aplica.',
+      },
+      ctaEspecificaNumero: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. Numero de cuenta especifica sobre la que aplica la medida. Solo digitos. "0" si no aplica.',
+      },
+      porcentajeAEmbargar: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. Porcentaje a embargar, solo el numero (ej "50"). "0" si no aplica.',
+      },
+      productosAFuturo: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO. "SI" o "NO" - si se deben embargar productos futuros del cliente. "0" si no aplica.',
+      },
+      tipoDocumentoRecibidoEmail: {
+        type: SchemaType.STRING,
+        description:
+          'LISTADO, MASIVO, DUPLICADO, INEMBARGABLE, DERECHO DE PETICION, LEY 1116, FIDUCIARIA, TUTELA, REQUERIMIENTO SUPER, u OTRAS AREAS. "0" si no se encuentra.',
+      },
+      tipoDeRequerimiento: {
+        type: SchemaType.STRING,
+        description:
+          'ACTUALIZACION, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACION, PEGAR o DESPEGAR. No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      tipoDeRequerimientoInembargable: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para EMBARGO, cuando el cliente es inembargable (ej REITERACION, INCIDENTE). "0" si no aplica.',
+      },
+      observaciones: {
+        type: SchemaType.STRING,
+        description:
+          'Alertas: REITERACION, SEGUNDO ALCANCE, APERTURA INCIDENTE, REQUERIMIENTO, PAGADOR, ALIMENTOS, DIVORCIO, NOMINA. No aplica a DESEMBARGO. "0" si no aplica.',
+      },
+      oficioEmbargoADesembargar: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para DESEMBARGO. Numero de oficio de embargo que este documento desembarga. "0" si no aplica.',
+      },
+      radicadoOficioEmbargoADesembargar: {
+        type: SchemaType.STRING,
+        description:
+          'Solo para DESEMBARGO. Radicado del oficio de embargo a desembargar. Solo digitos. "0" si no aplica.',
       },
     },
     // Gemini se apega a required con fiereza.
-    required: ['tipoDocumento', 'nRadicado'],
+    required: ['tipoOficio', 'noRadicado'],
   },
 
   promptTemplate: `
-    Eres un asistente EXPERTO en extracción de datos judiciales colombianos. Tu objetivo es procesar el texto de un OCR y devolver un JSON estricto.
+    Eres un asistente EXPERTO en extraccion de datos judiciales colombianos
+    para el sector bancario. Tu objetivo es procesar el documento adjunto
+    (oficio judicial) y devolver un JSON estricto con la informacion que un
+    operador necesitaria digitar manualmente en el sistema de captura.
 
-    --- REGLAS DE ORO DE CLASIFICACIÓN ---
-    Para determinar el 'tipoDocumento', utiliza estas señales semánticas del dataset oficial:
+    --- CLASIFICACION (tipoOficio) ---
+    1. EMBARGO: "embargo", "secuestro", "bloqueo", "retencion", "medida cautelar", "librar mandamiento de pago".
+    2. DESEMBARGO: "desembargo", "levantamiento", "dejar sin efecto", "liberacion", "cancelacion", "suspender".
+    3. ALCANCE: "reiteracion", "requerir", "mantenimiento", "oficiar", "incidente", "sancion", "desacato", "notificar", "ampliar".
 
-    1. EMBARGO: Busca "decretar el embargo", "limitarse a la suma", "remante", o "perfeccionamiento".
-    2. DESEMBARGO: Prioridad alta. Busca "cancelar el embargo", "levántese la medida", "terminación de proceso" o "dejar sin efectos".
-    3. TRASLADO: Busca "traslado de títulos", "poner a disposición" o "depósitos judiciales".
-    4. REITERACION: Busca "reiterar oficio", "informar cumplimiento" o "orden impartida".
-    5. Si no hay coincidencia clara con las frases anteriores, usa: VINCULO, ACLARACION o DESCONOCIDO.
+    --- REGLA DE FALLBACK (MUY IMPORTANTE) ---
+    Si un campo no aplica al tipo de oficio detectado, o no se encuentra en
+    el documento, devuelve el string "0" para ese campo. NUNCA inventes un
+    valor. NUNCA dejes un campo fuera del JSON de respuesta.
 
-    --- REGLAS ESTRICTAS DE EXTRACCIÓN Y LIMPIEZA ---
-    1. IDENTIFICACIÓN (Demandantes/Demandados):
-      - tipoIdentificacion: Solo 'CC' o 'NIT'.
-      - identificacion: Solo DÍGITOS. Elimina puntos, comas y espacios (Ej: "1.020.333-4" -> "10203334").
-      
-    2. VALORES (valorEmbargo):
-      - Extrae el monto global. Formato: Solo números, sin símbolos ($) ni separadores (Ej: "15.000.000" -> "15000000").
-
-    3. IDENTIFICADORES PROCESALES:
-      - nRadicado: Debe tener 23 dígitos exactos. Si el OCR falla, completa con ceros a la izquierda según el estándar judicial.
-      - nOficio: Solo los últimos 4 dígitos numéricos.
-      - nCtaDptoJudicial: Cuenta judicial de 12 dígitos. Solo números.
-
-    4. FECHAS:
-      - fechaOficio: 'YYYY-MM-DD'. Si no está clara, usa la fecha de la firma digital o pie de página.
-      - fechaHoraProceso: 'YYYY-MM-DD HH:mm:ss' o null si no existe sello de tiempo.
+    --- LIMPIEZA DE DATOS ---
+    - Identificaciones (noIdDemandado, noIdDemandante, ctaEspecificaNumero,
+      cuentaBancoAgrarioDepositoJudicial): solo digitos, sin puntos, comas
+      ni espacios.
+    - valorEmbargo: solo digitos, sin simbolos ($) ni separadores. Si el
+      valor esta en letras, conviertelo a numero entero.
+    - noRadicado: hasta 23 digitos, solo numeros.
+    - Fechas: formato DD/MM/AAAA HH:mm:ss.
+    - Nombres (nombreDemandado, nombreDemandante, nombreEnteEmbargante,
+      nombreBancoDepositoJudicial): todo en MAYUSCULAS.
 
     --- SALIDA ESPERADA ---
-    Devuelve ÚNICAMENTE el JSON. No incluyas explicaciones ni texto adicional. El incumplimiento será penalizado.
+    Devuelve UNICAMENTE el JSON, sin explicaciones ni texto adicional. El
+    incumplimiento sera penalizado.
 
-    --- TEXTO A PROCESAR (OCR) ---
+    --- CONTENIDO A PROCESAR ---
     {{text}}
   `,
 };
