@@ -355,6 +355,16 @@ export class ModelProcessor extends WorkerHost {
         12,
       );
 
+      // Cuenta y banco de depósito judicial aplican SOLO a EMBARGO y ALCANCE.
+      // En DESEMBARGO el modelo los llenaba con cualquier banco/cuenta que
+      // apareciera en el texto, así que se fuerzan a "0" aquí en vez de
+      // depender de que el prompt se respete. tipoOficio ya está colapsado
+      // al valor limpio más arriba.
+      if (oficio.tipoOficio === 'DESEMBARGO') {
+        oficio.cuentaDepositoJudicial = '0';
+        oficio.nombreBancoDepositoJudicial = '0';
+      }
+
       if (!resultJson.ente || typeof resultJson.ente !== 'object') {
         resultJson.ente = {};
       }

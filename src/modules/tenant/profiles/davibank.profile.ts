@@ -99,12 +99,12 @@ export const DavibankProfile: TenantProfile = {
           cuentaDepositoJudicial: {
             type: SchemaType.STRING,
             description:
-              'Número de cuenta de depósito judicial detectada en el oficio.',
+              'Número de cuenta de depósito judicial detectada en el oficio. Aplica SOLO a EMBARGO y ALCANCE; en DESEMBARGO siempre "0".',
           },
           nombreBancoDepositoJudicial: {
             type: SchemaType.STRING,
             description:
-              'Nombre del banco para el depósito judicial (usualmente Banco Agrario).',
+              'Nombre del banco para el depósito judicial (usualmente Banco Agrario). Aplica SOLO a EMBARGO y ALCANCE; en DESEMBARGO siempre "0".',
           },
         },
         required: [
@@ -369,7 +369,7 @@ export const DavibankProfile: TenantProfile = {
       2. DESEMBARGO: Prioridad alta. Cuando cita "DESEMBARGO", "LEVANTAMIENTO", "DEJAR SIN EFECTO", "LIBERACION", "CANCELACION", o "SUSPENDER".
       3. ALCANCE: cuando cita "REITERACION", "REQUERIR", "MANTENIMIENTO", "OFICIAR", "INCIDENTE", "SANCION", "DESACATO", "NOTIFICAR", o "AMPLIAR".
       4. CONFUSIÓN/AMBIGÜEDAD: Si aparecen palabras clave tanto de EMBARGO como de DESEMBARGO y resulta confuso o contradictorio determinar el objetivo principal, clasifícalo OBLIGATORIAMENTE como "ALCANCE".
-      Si clasificas como DESEMBARGO: demandados[].valorEmbargo, porcentajeAEmbargar, cuentas y productosFuturo deben quedar en su fallback ("0", [] o "NO" según corresponda) — no extraigas datos reales del embargo histórico que se está levantando. Las ÚNICAS excepciones son demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar, que SÍ deben extraerse en DESEMBARGO (ver BLOQUE 4).
+      Si clasificas como DESEMBARGO: oficio.cuentaDepositoJudicial y oficio.nombreBancoDepositoJudicial deben quedar en "0", y demandados[].valorEmbargo, porcentajeAEmbargar, cuentas y productosFuturo deben quedar en su fallback ("0", [] o "NO" según corresponda) — no extraigas datos reales del embargo histórico que se está levantando. Las ÚNICAS excepciones son demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar, que SÍ deben extraerse en DESEMBARGO (ver BLOQUE 4).
       Al revés: demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar aplican EXCLUSIVAMENTE a DESEMBARGO. En EMBARGO y en ALCANCE ambos deben quedar en "0", aunque el documento mencione oficios o resoluciones previas.
     - TIPO PROCESO (ente.tipoProceso): "JUDICIAL" si el documento menciona JUZGADO; en cualquier otro caso (incluido EJECUTIVO) es "COACTIVO".
     - TIPO REQUERIMIENTO (oficio.tipoRequerimiento): clasifica en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR. Si no hay, usar "0".
@@ -381,8 +381,8 @@ export const DavibankProfile: TenantProfile = {
     --- BLOQUE 4: REGLAS POR CAMPO ---
     oficio:
     - NOMBRE OFICIO FINAL (oficio.nombreOficioFinal): Aplica a los TRES tipos de oficio (EMBARGO, DESEMBARGO y ALCANCE). Construir con la siguiente estructura estricta: "{numeroOficio} DEL {fechaOficioDDMMAA} {MMDD}{consecutivo4Digitos}". PISTA: tanto el numeroOficio como la fecha del oficio normalmente se encuentran en el ENCABEZADO del documento (parte superior) — buscalos ahí primero. El numeroOficio se busca por PRIORIDAD: 1) "EXPEDIENTE" o "Exp.", 2) "OFICIO N" / "OFICIO No.", 3) "COMUNICADO No.". IMPORTANTE: extraer SOLO el número inmediato después de la etiqueta, SIN incluir el año ni texto adicional. Ejemplos: "OFICIO N 00906 de 2025" → numeroOficio = "00906" (NO "009062025"); "EXPEDIENTE 4686-2022" → numeroOficio = "46862022" (guiones se eliminan); "COMUNICADO No. 12345" → numeroOficio = "12345". SOLO si el documento no trae ninguna de esas tres etiquetas, se admite como reemplazo el número de "RESOLUCIÓN", "ACTO ADMINISTRATIVO", "RADICADO" o "PROCESO". Si tampoco hay ninguno de esos, usar "0". CRÍTICO: este reemplazo por resolución/radicado es EXCLUSIVO de nombreOficioFinal — NO se aplica a demandados[].oficioEmbargoADesembargar, que solo admite números de OFICIO reales. Máximo 23 dígitos, solo números. Extraer la fecha del oficio o documento y formatearla como DDMMAA (6 dígitos). Los últimos 8 caracteres (4 dígitos día-mes + 4 dígitos consecutivo) se completan en post-procesamiento. Ejemplo: "00906 DEL 290925 00000000". Si no se encuentra fecha, usar "000000".
-    - CUENTA DEPOSITO JUDICIAL (oficio.cuentaDepositoJudicial): Extraer la cuenta de depósito judicial (suele estar asociada a la frase "depósito judicial"). Numérica, máximo 12 caracteres. Si no se encuentra, usar "0".
-    - NOMBRE BANCO DEPOSITO JUDICIAL (oficio.nombreBancoDepositoJudicial): Extraer el nombre de la entidad bancaria asignada para los depósitos judiciales si se menciona (ej. "BANCO AGRARIO..."). Alfanumérico, máximo 40 caracteres, siempre en MAYÚSCULAS. Si no se encuentra, usar "0".
+    - CUENTA DEPOSITO JUDICIAL (oficio.cuentaDepositoJudicial): Aplica SOLO a EMBARGO y ALCANCE. Extraer la cuenta de depósito judicial (suele estar asociada a la frase "depósito judicial"). Numérica, máximo 12 caracteres. Si no se encuentra, usar "0". Si el oficio es DESEMBARGO, SIEMPRE "0", aunque el documento mencione una cuenta de depósito judicial.
+    - NOMBRE BANCO DEPOSITO JUDICIAL (oficio.nombreBancoDepositoJudicial): Aplica SOLO a EMBARGO y ALCANCE. Extraer el nombre de la entidad bancaria asignada para los depósitos judiciales si se menciona (ej. "BANCO AGRARIO..."). Alfanumérico, máximo 40 caracteres, siempre en MAYÚSCULAS. Si no se encuentra, usar "0". Si el oficio es DESEMBARGO, SIEMPRE "0", aunque el documento mencione un banco.
     - OBSERVACIONES (oficio.observaciones): Si dentro del oficio se encuentra una o más de estas palabras clave exactas: Nomina, Salario, Cesantías, Empleado, Pagador, Quinta parte, Devengar, Devengue, 5 parte, Honorarios, Ingresos, MLV, Prima, Sueldo, Reiteración, Alcance, Incidente, Requerimiento, Requerirlos, Requerir, Requiere, Informe, Información, Informen, Desacato, Tutela, Derecho, Petición, Defensoría, Sanción, Fiduciaria, Inmobiliario, Inmueble, Bienes, vehículo, Solicitud de Información, Certificado o certificación; captúralas usando EXACTAMENTE la misma palabra de esta lista y concaténalas separadas por comas (ej. "Nomina, Pagador, Información"). Si no se encuentra ninguna, usar "0".
 
     demandados:
