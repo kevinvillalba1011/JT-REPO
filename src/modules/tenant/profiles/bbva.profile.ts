@@ -92,7 +92,7 @@ export const BbvaProfile: TenantProfile = {
       nombreOficioInicial: {
         type: SchemaType.STRING,
         description:
-          'Nombre del documento/oficio con el que se transmitio para gestion. "0" si no aplica o no se encuentra.',
+          'Numero del oficio, SOLO los digitos, sin letras ni palabras ni puntos (ej. "OFICIO N. 0850" -> "0850"; "Oficio No. 123 de 2026" -> "123"). Conserva los ceros a la izquierda. "0" si no aplica o no se encuentra.',
       },
       nombreOficioFinal: {
         type: SchemaType.STRING,
@@ -244,6 +244,69 @@ export const BbvaProfile: TenantProfile = {
         description:
           'Solo para DESEMBARGO. Radicado del oficio de embargo a desembargar. Solo digitos. "0" si no aplica.',
       },
+      departamento: {
+        type: SchemaType.STRING,
+        description:
+          'Departamento donde se emite el documento. Solo para EMBARGO y ALCANCE. "0" si no aplica o no se encuentra.',
+      },
+      fechaOficio: {
+        type: SchemaType.STRING,
+        description:
+          'Fecha de emision del oficio (la que figura en el documento, no la de recepcion). Formato DD/MM/AAAA. "0" si no se encuentra.',
+      },
+      cargoFuncionario: {
+        type: SchemaType.STRING,
+        description:
+          'Cargo de quien firma el oficio (ej. SECRETARIO, JUEZ, PROFESIONAL UNIVERSITARIO). "0" si no se encuentra.',
+      },
+      demandados: {
+        type: SchemaType.ARRAY,
+        description:
+          'TODOS los demandados/accionados/embargados del oficio, uno por elemento. El primero debe coincidir con noIdDemandado/tipoIdDemandado/nombreDemandado. Lista vacia si no se encuentra ninguno.',
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            tipoId: {
+              type: SchemaType.STRING,
+              description:
+                'C (cedula ciudadania), E (extranjeria), N (NIT), T (tarjeta identidad) o P (pasaporte). "0" si no se encuentra.',
+            },
+            numeroId: {
+              type: SchemaType.STRING,
+              description:
+                'Solo digitos, sin puntos, comas ni digito de verificacion. "0" si no se encuentra.',
+            },
+            nombre: {
+              type: SchemaType.STRING,
+              description: 'Nombre completo en MAYUSCULAS. "0" si no se encuentra.',
+            },
+          },
+          required: ['tipoId', 'numeroId', 'nombre'],
+        },
+      },
+      demandantes: {
+        type: SchemaType.ARRAY,
+        description:
+          'TODOS los demandantes/accionantes del oficio, uno por elemento. Solo para EMBARGO y ALCANCE. Lista vacia si no aplica o no se encuentra ninguno.',
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            tipoId: {
+              type: SchemaType.STRING,
+              description: 'C, E, N, T o P. "0" si no se encuentra.',
+            },
+            numeroId: {
+              type: SchemaType.STRING,
+              description: 'Solo digitos. "0" si no se encuentra.',
+            },
+            nombre: {
+              type: SchemaType.STRING,
+              description: 'Nombre completo en MAYUSCULAS. "0" si no se encuentra.',
+            },
+          },
+          required: ['tipoId', 'numeroId', 'nombre'],
+        },
+      },
     },
     // Gemini se apega a required con fiereza.
     required: ['tipoOficio', 'noRadicado'],
@@ -275,6 +338,14 @@ export const BbvaProfile: TenantProfile = {
     - Fechas: formato DD/MM/AAAA HH:mm:ss.
     - Nombres (nombreDemandado, nombreDemandante, nombreEnteEmbargante,
       nombreBancoDepositoJudicial): todo en MAYUSCULAS.
+
+    --- VARIOS DEMANDADOS / DEMANDANTES ---
+    Si el oficio menciona mas de un demandado (o demandante), incluye a
+    todos en los arreglos "demandados" / "demandantes". Los campos planos
+    (noIdDemandado, tipoIdDemandado, nombreDemandado, etc.) corresponden
+    al primero de cada lista. En un DESEMBARGO incluye SOLO a los demandados
+    sobre quienes recae el levantamiento de la medida (no a los demas
+    demandados mencionados en la referencia del proceso).
 
     --- SALIDA ESPERADA ---
     Devuelve UNICAMENTE el JSON, sin explicaciones ni texto adicional. El
