@@ -457,14 +457,12 @@ export class ModelProcessor extends WorkerHost {
             'demandados[].tipoId',
             demandado.tipoId,
           );
-          // Tope 30 (antes 12): es la llave de cruce contra la BD del cliente
-          // (ver identifierKey del perfil), y el número de identificación
-          // real puede superar 12 dígitos. 30 es el tope real de la columna
-          // en BD, no un valor arbitrario.
+          // Tope configurable por tenant (default 30, tope real de la columna
+          // en BD). Davibank lo limita a 12 vía numeroIdDemandadoMaxLength.
           demandado.numeroId = this.normalizeNumericField(
             'demandados[].numeroId',
             demandado.numeroId,
-            30,
+            this.profile.numeroIdDemandadoMaxLength ?? 30,
           );
           demandado.numeroRadicado = this.normalizeNumericField(
             'demandados[].numeroRadicado',

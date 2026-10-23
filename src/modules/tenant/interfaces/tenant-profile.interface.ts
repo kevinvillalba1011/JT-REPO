@@ -7,4 +7,6 @@ export interface TenantProfile {
   clientFields: string[];
   nonClientFields: string[];
   identifierKey: string;
+  /** Tope de caracteres de demandados[].numeroId. Default 30 si no se define. */
+  numeroIdDemandadoMaxLength?: number;
 }
