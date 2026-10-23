@@ -4,6 +4,7 @@ import { TenantProfile } from '../interfaces/tenant-profile.interface';
 export const DavibankProfile: TenantProfile = {
   id: 'davibank',
   identifierKey: 'demandados.0.numeroId',
+  numeroIdDemandadoMaxLength: 12,
   clientFields: [
     'oficio.tipoOficio',
     'oficio.nombreOficioInicial',
@@ -133,7 +134,7 @@ export const DavibankProfile: TenantProfile = {
             numeroId: {
               type: SchemaType.STRING,
               description:
-                'Número de identificación del demandado, TAL COMO aparece en el documento. Solo dígitos, sin puntos ni comas. Máximo 30 caracteres.',
+                'Número de identificación del demandado, TAL COMO aparece en el documento. Solo dígitos, sin puntos ni comas. Máximo 12 caracteres.',
             },
             numeroRadicado: {
               type: SchemaType.STRING,
@@ -369,7 +370,7 @@ export const DavibankProfile: TenantProfile = {
       2. DESEMBARGO: Prioridad alta. Cuando cita "DESEMBARGO", "LEVANTAMIENTO", "DEJAR SIN EFECTO", "LIBERACION", "CANCELACION", o "SUSPENDER".
       3. ALCANCE: cuando cita "REITERACION", "REQUERIR", "MANTENIMIENTO", "OFICIAR", "INCIDENTE", "SANCION", "DESACATO", "NOTIFICAR", o "AMPLIAR".
       4. CONFUSIÓN/AMBIGÜEDAD: Si aparecen palabras clave tanto de EMBARGO como de DESEMBARGO y resulta confuso o contradictorio determinar el objetivo principal, clasifícalo OBLIGATORIAMENTE como "ALCANCE".
-      Si clasificas como DESEMBARGO: oficio.cuentaDepositoJudicial y oficio.nombreBancoDepositoJudicial deben quedar en "0", y demandados[].valorEmbargo, porcentajeAEmbargar, cuentas y productosFuturo deben quedar en su fallback ("0", [] o "NO" según corresponda) — no extraigas datos reales del embargo histórico que se está levantando. Las ÚNICAS excepciones son demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar, que SÍ deben extraerse en DESEMBARGO (ver BLOQUE 4).
+      Si clasificas como DESEMBARGO: demandados[].valorEmbargo, porcentajeAEmbargar, cuentas y productosFuturo deben quedar en su fallback ("0", [] o "NO" según corresponda) — no extraigas datos reales del embargo histórico que se está levantando. Las ÚNICAS excepciones son demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar, que SÍ deben extraerse en DESEMBARGO (ver BLOQUE 4). Además, oficio.observaciones SÍ se extrae en DESEMBARGO con la misma regla que en EMBARGO y ALCANCE (ver BLOQUE 4).
       Al revés: demandados[].oficioEmbargoADesembargar y demandados[].radicadoADesembargar aplican EXCLUSIVAMENTE a DESEMBARGO. En EMBARGO y en ALCANCE ambos deben quedar en "0", aunque el documento mencione oficios o resoluciones previas.
     - TIPO PROCESO (ente.tipoProceso): "JUDICIAL" si el documento menciona JUZGADO; en cualquier otro caso (incluido EJECUTIVO) es "COACTIVO".
     - TIPO REQUERIMIENTO (oficio.tipoRequerimiento): clasifica en una de estas opciones exactas: ACTUALIZACIÓN, INFORMATIVO, REQUERIMIENTO, REQUERIMIENTO POR SEGUNDA O TERCERA VEZ, APERTURA DE INCIDENTE, SOLICITUD DE INFORMACIÓN, PEGAR, DESPEGAR. Si no hay, usar "0".
@@ -401,7 +402,7 @@ export const DavibankProfile: TenantProfile = {
     - LINK COLOCACION RESPUESTA (ente.linkColocacionRespuesta): SIEMPRE debe quedar en "0". NUNCA llenarlo con el link de verificación del documento (ej. URL de firmaelectronica.ramajudicial.gov.co) ni con ninguna otra URL, dirección física o texto. Valor fijo obligatorio: "0".
 
     --- BLOQUE 5: LIMPIEZA DE FORMATO TRANSVERSAL ---
-    - NÚMEROS DE IDENTIFICACIÓN (demandados[].numeroId, demandantes[].numeroId): Remover formato (puntos, comas, guiones). Extraer exclusivamente dígitos, tal como aparece en el documento, sin truncar salvo que supere 30 caracteres (límite real de la columna en BD).
+    - NÚMEROS DE IDENTIFICACIÓN (demandados[].numeroId, demandantes[].numeroId): Remover formato (puntos, comas, guiones). Extraer exclusivamente dígitos, tal como aparece en el documento. Máximo 12 caracteres (límite de Davibank); el sistema recorta en post-procesamiento si lo supera.
     - NOMBRES (demandados[].nombre, demandantes[].nombre, ente.nombreEnteEmbargante): transcribir TAL COMO aparecen en el documento, SIN truncar ni abreviar. Estos nombres se cruzan contra la base de datos del cliente, así que un nombre incompleto rompe ese cruce — prioriza la fidelidad al texto original sobre cualquier idea de "acortar".
     - PORCENTAJE (demandados[].porcentajeAEmbargar): Solo el número, sin signo %, sin puntos ni comas. Si no hay, usar "0".
     - TIPO DE APLICACIÓN (infoCliente.tipoAplicacion): el valor por defecto "CONGELAR" aplica a EMBARGO y ALCANCE por igual. En DESEMBARGO no hay default: usar "0" siempre.
