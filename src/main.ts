@@ -50,7 +50,15 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(port);
-  Logger.verbose(`🚀 API listing on: ${port}/api/docs`);
+  // PUBLIC_PORT (opcional): puerto con el que el contenedor queda publicado en
+  // el host (ej. 3001 en docker-compose.bbva.yml). Solo afecta este log; la
+  // app siempre escucha en PORT.
+  const publicPort = configService.get<string>('PUBLIC_PORT');
+  const publicado =
+    publicPort && publicPort !== String(port)
+      ? ` (publicado en el host: ${publicPort})`
+      : '';
+  Logger.verbose(`🚀 API listing on: ${port}/api/docs${publicado}`);
 
   Logger.verbose(`Api version: 2.0.0`);
 }

@@ -33,6 +33,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - PUBLIC_PORT=${BBVA_APP_PORT:-3001}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/secret.json
