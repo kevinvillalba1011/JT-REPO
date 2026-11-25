@@ -25,6 +25,11 @@ enum DocumentState {
   EN_COLA_MASIVO
   PROCESANDO_EXCEL
   EXCEL_OK
+  // Extraccion a demanda (POST /extraction/manual, boton "Rellenar datos (IA)"
+  // del portal B2B). Estado propio y NO IA_OK a proposito: el reporte diario
+  // (report.service), las metricas y el conteo de lotes consumen IA_OK, y estas
+  // filas no vienen del pipeline batch ni deben entrar a esos calculos.
+  MANUAL_OK
 }
 
 // Trazabilidad del envío al servicio externo, como dimensión separada del

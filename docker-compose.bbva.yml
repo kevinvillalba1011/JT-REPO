@@ -1,0 +1,54 @@
+# Despliegue de back-jt para BBVA (extraccion manual del portal B2B), al lado
+# del de davibank en el mismo servidor, SIN compartir nada con el:
+#   - proyecto, contenedores, red y volumen con nombres propios (jt-bbva-*)
+#   - Redis propio (si compartieran Redis, las colas BullMQ cola_ocr/cola_modelo
+#     tienen el mismo nombre y cada app consumiria los trabajos de la otra)
+#   - sin contenedor de Postgres: usa la BD de BBVA indicada en DATABASE_URL
+#   - sin carpetas del servidor montadas: asi esta instancia no ve ni procesa
+#     los oficios de davibank (el endpoint /extraction/manual no usa carpetas)
+#   - puerto del host distinto (BBVA_APP_PORT, por defecto 3001)
+#
+# Uso:
+#   cp .env.bbva.example .env.bbva   (y completar valores)
+#   docker compose -f docker-compose.bbva.yml --env-file .env.bbva up -d --build
+name: jt-bbva
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: jt-bbva-redis
+    restart: unless-stopped
+    networks:
+      - jt-bbva-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jt-bbva-app
+    ports:
+      - '${BBVA_APP_PORT:-3001}:3000'
+    env_file:
+      - .env.bbva
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/secret.json
+    depends_on:
+      - redis
+    volumes:
+      - bbva-local:/app/local
+      - ./secrets:/app/secrets:ro
+    restart: unless-stopped
+    networks:
+      - jt-bbva-network
+
+volumes:
+  bbva-local:
+    name: jt-bbva-local
+
+networks:
+  jt-bbva-network:
+    name: jt-bbva-network

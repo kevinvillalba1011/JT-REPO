@@ -4,8 +4,108 @@ Pipeline de procesamiento de documentos judiciales con NestJS, BullMQ (Redis), P
 
 ---
 
+## 🏦 Rama BBVA — Extracción a demanda para el portal B2B
+
+Esta rama (`feature/b2b-extraccion-manual`) usa `back-jt` como servicio de **extracción síncrona de un solo PDF** para el portal legado B2B (EmbargosWebJTC, JSF/JBoss). El operador ya no digita desde cero: al abrir un oficio en *Verificación de LAO*, el portal manda el PDF aquí, Gemini devuelve los campos y el portal los pre-llena (verde = lo llenó la IA, naranja = lo digita el operador). El resto del README describe el pipeline batch de davibank, que **no se usa** en este despliegue.
+
+```
+Portal (Iniciar) ──PDF──▶ POST /extraction/manual ──▶ Gemini (perfil bbva) ──▶ JSON
+                                   │                                              │
+                                   └── documents (estado MANUAL_OK) ◀─────────────┘
+Portal ◀── { archivo, resultado, desdeCache? } ── pinta verde/naranja ── operador verifica
+```
+
+### Endpoint
+
+`POST /extraction/manual` — `multipart/form-data`
+
+| Campo / header | Obligatorio | Descripción |
+| --- | --- | --- |
+| `file` | Sí | PDF del oficio. |
+| `label` | No | Label del embargo en el portal (queda en la traza). |
+| `usuario` | No | Usuario del portal (queda en la traza). |
+| `forzar` | No | `"true"` ignora el resultado guardado de ese PDF y consulta a Gemini otra vez (botón *Reintentar IA*). |
+| `X-Api-Key` | Si hay `EXTRACTION_MANUAL_API_KEY` | Sin la variable configurada no se exige (solo desarrollo). |
+
+Respuesta: `{ "archivo": "...", "resultado": { ...campos... }, "desdeCache": true }`. En `resultado`, `"0"` significa "no aplica / no encontrado". Los campos y su cobertura están en [`docs/campos-embargo-bbva.md`](docs/campos-embargo-bbva.md); el esquema y el prompt, en `src/modules/tenant/profiles/bbva.profile.ts`.
+
+### Qué se guarda
+
+Cada extracción exitosa queda en la tabla `documents` (no hay tabla nueva) con:
+
+- `estado = MANUAL_OK` — a propósito **no** `IA_OK`: el reporte diario (`report.service`, 23:00), las métricas y el conteo de lotes consumen `IA_OK` y estas filas no vienen del pipeline batch.
+- `hash_md5` del PDF y `json_modelo` con el JSON extraído más `_origen: { fuente, label, usuario }`.
+- **Cache por MD5:** si el mismo PDF ya tiene una fila `MANUAL_OK`, se devuelve esa y no se vuelve a llamar a Gemini (`desdeCache: true`), salvo `forzar=true`.
+- Solo se guardan las extracciones exitosas, y si el guardado falla solo se registra un `warn`: la respuesta al portal no se afecta.
+
+```sql
+SELECT nombre_archivo, estado, json_modelo->'_origen' AS origen, created_at
+FROM documents WHERE estado = 'MANUAL_OK' ORDER BY created_at DESC LIMIT 5;
+```
+
+### Configuración
+
+| Dónde | Qué |
+| --- | --- |
+| `.env.bbva` (ver `.env.bbva.example`) | `DATABASE_URL` (BD propia de BBVA), `TENANT_PROFILE=bbva`, `GEMINI_API_KEY`, `EXTRACTION_MANUAL_API_KEY`, `BBVA_APP_PORT` (3001). `GCP_PROJECT_ID` y `DOCUMENT_AI_PROCESSOR_ID` siguen siendo obligatorias en la validación de arranque aunque BBVA no use Document AI. |
+| Tabla `parametros` del portal | `ia_extraccion_url` = `http://IP_SERVIDOR:3001/extraction/manual` (obligatorio) e `ia_extraccion_api_key` = el mismo valor de `EXTRACTION_MANUAL_API_KEY` (opcional). El portal espera hasta 120 s. |
+
+### Base de datos
+
+El esquema se aplica con los SQL de `migrations/` en orden (nunca `prisma migrate` ni `db push`; ver `AGENTS.md`). Para la BD de BBVA, la última migración es `20261125_extraccion_manual` (`ALTER TYPE "DocumentState" ADD VALUE 'MANUAL_OK'`).
+
+BD nueva, desde Windows/PowerShell, con la BD ya creada:
+
+```powershell
+$env:DATABASE_URL = "postgresql://USUARIO:CLAVE@HOST:5432/NOMBRE_BD_BBVA"
+foreach ($d in Get-ChildItem migrations -Directory | Sort-Object Name) {
+  Write-Host "==> $($d.Name)"
+  npx prisma db execute --file "$($d.FullName)\migration.sql" --schema schema.prisma
+  if ($LASTEXITCODE -ne 0) { break }
+}
+npx prisma generate
+```
+
+(Alternativa con `psql`: el bucle `for f in migrations/*/migration.sql` de la guía de arriba.) Si la BD ya existía, aplica solo las migraciones pendientes.
+
+### Despliegue en el servidor (junto a davibank)
+
+`docker-compose.bbva.yml` levanta **solo** `app` + `redis`, sin compartir nada con el stack de davibank:
+
+| Recurso | davibank (`docker-compose.yml`) | BBVA (`docker-compose.bbva.yml`) |
+| --- | --- | --- |
+| Proyecto / red | `jt-ia` / `jt-network` | `jt-bbva` / `jt-bbva-network` |
+| Contenedores | `jt-app`, `jt-redis-llm`, `jt-db` | `jt-bbva-app`, `jt-bbva-redis` |
+| Puerto del host | 3000 | 3001 (`BBVA_APP_PORT`) |
+| Redis | propio | **propio**: si se compartiera, las colas BullMQ (`cola_ocr`, `cola_modelo`) tienen el mismo nombre y cada app consumiría los trabajos de la otra |
+| Postgres | contenedor `jt-db` | ninguno: BD externa por `DATABASE_URL` |
+| Carpetas del servidor | montadas (`SERVER_PATH_*`) | ninguna: no ve ni procesa oficios de davibank; el endpoint no usa carpetas |
+
+Redis sigue haciendo falta porque la app arranca BullMQ y los locks de los crons aunque aquí solo se use `/extraction/manual`.
+
+```bash
+cd /ruta/back-jt
+cp .env.bbva.example .env.bbva && nano .env.bbva
+docker compose -f docker-compose.bbva.yml --env-file .env.bbva up -d --build
+docker logs -f jt-bbva-app
+```
+
+Siempre usa `-f docker-compose.bbva.yml` para no afectar los contenedores de davibank. Requiere `./secrets/secret.json` (se monta solo lectura).
+
+### Problemas frecuentes
+
+| Síntoma | Causa |
+| --- | --- |
+| El portal avisa "Falta el parametro ia_extraccion_url" | Falta el parámetro en la tabla `parametros`. |
+| `401` | `X-Api-Key` distinta de `EXTRACTION_MANUAL_API_KEY`. |
+| Log `No se pudo guardar la extraccion manual…` | Falta aplicar la migración `20261125_extraccion_manual` o `npx prisma generate`; el portal sigue funcionando. |
+| Timeout en el portal | Gemini tardó más de 120 s; el operador sigue manual o usa *Reintentar IA*. |
+
+---
+
 ## 🆕 Novedades recientes
 
+- **2026-11-25 · Rama BBVA (extracción a demanda para el portal B2B):** `POST /extraction/manual` guarda cada extracción en `documents` con estado `MANUAL_OK`, reutiliza el resultado por MD5 y acepta `forzar`; despliegue aislado con `docker-compose.bbva.yml`. Ver la sección [Rama BBVA](#-rama-bbva--extracción-a-demanda-para-el-portal-b2b).
 - **2026-08-04 · ALCANCE recupera default CONGELAR; DESEMBARGO histórico ya no se sobrescribe:** `infoCliente.tipoAplicacion` vuelve a tener el mismo comportamiento en EMBARGO y ALCANCE (CONGELAR por defecto si no hay valor explícito); DESEMBARGO sigue en `"0"` siempre. Ver `normalizarTipoAplicacion` en `src/common/utils/tipo-oficio.util.ts`.
 - **2026-08-04 · `demandados[].oficioEmbargoADesembargar` con fallback a fecha:** si el documento no trae número de oficio bajo etiqueta explícita OFICIO/COMUNICADO, en vez de `"0"` el post-procesamiento (`model.processor.ts`) completa el campo con la fecha del oficio (DDMMAA) o, si tampoco hay fecha, con la fecha de procesamiento — mismo segmento de fecha que ya usaba `nombreOficioFinal`. Solo aplica al flujo individual (IA); el prompt sigue devolviendo `"0"` cuando no encuentra la etiqueta, la fecha se completa después, determinísticamente.
 - **2026-08-04 · Sin límite de caracteres en nombres que cruzan con la BD del cliente:** `oficio.nombreOficioInicial`, `demandados[].nombre`, `demandantes[].nombre`, `ente.nombreEnteEmbargante` y `ente.nombreSecretarioFuncionario` ya no se truncan en ningún punto del pipeline (prompt, post-procesamiento, ni validación del formulario en el backend Java). Antes se cortaban a 25/40/50 caracteres muy por debajo de lo que el documento trae, lo que rompía el cruce contra el sistema del cliente.

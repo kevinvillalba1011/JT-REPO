@@ -41,6 +41,7 @@ nul
 .env.local
 .env.*
 !.env.example
+!.env.bbva.example
 
 .antigravityrules
 MEMORY.md

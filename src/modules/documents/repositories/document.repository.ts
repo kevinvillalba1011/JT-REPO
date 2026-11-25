@@ -41,6 +41,18 @@ export class DocumentRepository {
     });
   }
 
+  /**
+   * Ultima extraccion a demanda (MANUAL_OK) de un PDF por su MD5. Se filtra por
+   * estado a proposito: findByHash devuelve cualquier documento con ese hash,
+   * incluidos los del flujo batch, cuyo JSON tiene otro esquema.
+   */
+  async findManualOkByHash(md5Hash: string): Promise<Document | null> {
+    return this.prisma.document.findFirst({
+      where: { md5Hash, state: DocumentState.MANUAL_OK },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async findByFileName(fileName: string): Promise<Document | null> {
     return this.prisma.document.findFirst({
       where: { fileName },

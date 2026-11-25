@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ExtractionManualController } from './extraction-manual.controller';
 import { GeminiService } from '../../common/services/gemini.service';
+import { DocumentsModule } from '../documents/documents.module';
 
 /**
  * Endpoint productivo (no de prueba, a diferencia de TestModule) de
@@ -11,7 +12,7 @@ import { GeminiService } from '../../common/services/gemini.service';
  * .agents/decisions.md.
  */
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, DocumentsModule],
   controllers: [ExtractionManualController],
   providers: [GeminiService],
 })
